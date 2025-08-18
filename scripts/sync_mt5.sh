@@ -1,67 +1,50 @@
 #!/bin/bash
 
-# MT5 Synchronization Script
-# Синхронизирует MQL5 роботов из Git репозитория с MT5 через Parallels Desktop
-# 
-# Использование: 
-# 1. Перетащите этот файл в терминал
-# 2. Или выполните: ./scripts/sync_mt5.sh
-# 3. Или выполните: bash scripts/sync_mt5.sh
-
-echo "🚀 Начинаем синхронизацию MQL5 роботов с MT5..."
-echo ""
+# MT5 Compact Synchronization Script
+# Компактная версия скрипта синхронизации с отображением размера исторических данных
 
 # Определяем пути
 REPO_PATH="/Users/pablonachos/Documents/Git Projects/TradingRobots"
 MT5_SYNC_PATH="/Users/pablonachos/MT5Sync/Experts"
 MT5_WINDOWS_PATH="C:\\Users\\pablonachos\\AppData\\Roaming\\MetaQuotes\\Terminal\\010E047102812FC0C18890992854220E\\MQL5\\Experts"
+MT5_BASES_PATH="C:\\Users\\pablonachos\\AppData\\Roaming\\MetaQuotes\\Terminal\\010E047102812FC0C18890992854220E\\bases"
 
-# Проверяем, существуют ли необходимые папки
-if [ ! -d "$REPO_PATH" ]; then
-    echo "❌ Ошибка: Папка репозитория не найдена: $REPO_PATH"
+# Проверяем папки
+if [ ! -d "$REPO_PATH" ] || [ ! -d "$MT5_SYNC_PATH" ]; then
+    echo "❌ Ошибка: Необходимые папки не найдены"
     exit 1
 fi
 
-if [ ! -d "$MT5_SYNC_PATH" ]; then
-    echo "❌ Ошибка: Папка MT5Sync не найдена: $MT5_SYNC_PATH"
-    echo "💡 Убедитесь, что общая папка Parallels настроена правильно"
-    exit 1
+# Получаем размер исторических данных
+BASES_SIZE_GB=$(prlctl exec "Windows 11" powershell -Command "\$size = (Get-ChildItem '$MT5_BASES_PATH' -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum; if (\$size) { [math]::Round(\$size/1GB,2) } else { 0 }" 2>/dev/null | tr -d '\r')
+
+if [ ! -z "$BASES_SIZE_GB" ] && [ "$BASES_SIZE_GB" != "" ] && [ "$BASES_SIZE_GB" != "0" ]; then
+    echo "📊 Исторические данные: ${BASES_SIZE_GB} ГБ"
+else
+    echo "📊 Исторические данные: н/д"
 fi
 
-# Показываем что будем синхронизировать
-echo "📁 Исходная папка: $REPO_PATH"
-echo "🔄 Промежуточная:  $MT5_SYNC_PATH"
-echo "🎯 Целевая папка:   $MT5_WINDOWS_PATH"
-echo ""
+# Синхронизация
+echo -n "🔄 Синхронизация... "
 
-# Шаг 1: Синхронизируем в общую папку Parallels
-echo "⏳ Шаг 1: Синхронизируем в общую папку..."
-rsync -av --delete --exclude='.git' --exclude='.kilocode' --exclude='docs' --exclude='scripts' --exclude='README.md' "$REPO_PATH/" "$MT5_SYNC_PATH/"
+# Шаг 1: rsync в общую папку
+rsync -av --delete --exclude='.git' --exclude='.kilocode' --exclude='docs' --exclude='scripts' --exclude='README.md' "$REPO_PATH/" "$MT5_SYNC_PATH/" > /dev/null 2>&1
 
 if [ $? -ne 0 ]; then
-    echo "❌ Ошибка при синхронизации в общую папку!"
+    echo "❌ Ошибка rsync"
     exit 1
 fi
 
-# Шаг 2: Копируем файлы в MT5 через Windows
-echo "⏳ Шаг 2: Копируем файлы в MT5..."
+# Шаг 2: копирование в MT5
 prlctl exec "Windows 11" cmd /c "xcopy \"\\\\psf\\MT5Sync\\Experts\\*\" \"$MT5_WINDOWS_PATH\\\" /E /Y /I" > /dev/null 2>&1
 
 if [ $? -eq 0 ]; then
-    echo ""
-    echo "✅ Синхронизация завершена успешно!"
-    echo ""
-    echo "📊 Синхронизированные роботы:"
-    ls -la "$MT5_SYNC_PATH" | grep "^d" | awk '{print "   📁 " $9}' | grep -v "^\s*📁\s*\.$" | grep -v "^\s*📁\s*\.\.$"
-    echo ""
-    echo "🎮 Файлы скопированы в MT5 Navigator → Expert Advisors"
-    echo "💡 Перезапустите MetaEditor или обновите Navigator для отображения изменений"
+    # Подсчитываем роботов
+    ROBOT_COUNT=$(ls -la "$MT5_SYNC_PATH" | grep "^d" | grep -v "^\s*d.*\s\.$" | grep -v "^\s*d.*\s\.\.$" | wc -l | tr -d ' ')
+    echo "✅ Готово! Синхронизировано роботов: $ROBOT_COUNT"
 else
-    echo ""
-    echo "❌ Ошибка при копировании в MT5!"
-    echo "💡 Проверьте, что Windows VM запущена и MT5 установлен"
+    echo "❌ Ошибка копирования в MT5"
     exit 1
 fi
 
-echo ""
-echo "🏁 Готово!"
+echo "💡 Перезапустите MetaEditor для отображения изменений"
