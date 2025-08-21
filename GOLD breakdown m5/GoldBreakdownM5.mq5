@@ -15,6 +15,9 @@
 //| Примечание: 100 пунктов = $1 в цене золота                      |
 //+------------------------------------------------------------------+
 #include <Trade/Trade.mqh>
+#include "LevelsCalculator.mqh"
+#include "TradingUtils.mqh"
+#include "TradingOperations.mqh"
 #property strict
 
 // Входные параметры
@@ -32,10 +35,14 @@ input double   InpLotMultiplier = 1.0;          // Множитель лота (
 input int      InpMaxAdditionalTrades = 5;      // Макс. доп. сделок после первого убытка (по умолчанию 5)
 input int      InpDynamicLevelsAfterStops = 3;  // После скольких стопов включать часовые уровни (по умолчанию 3)
 input int      InpMagicNumber = 555777;         // Уникальный идентификатор советника
+input bool     InpTradeMondayEnabled = true;    // Разрешить торговлю в понедельник
 input bool     InpDebugMode = true;             // Режим отладки
 
 // Глобальные переменные для торговли
 CTrade         trade;                           // Объект для торговых операций
+CLevelsCalculator* levelsCalculator;            // Калькулятор уровней
+CTradingUtils* tradingUtils;                    // Вспомогательные функции
+CTradingOperations* tradingOperations;          // Торговые операции
 double         pointValue = 0.0;                // Правильное значение пункта для золота
 double         prevDayHigh = 0.0;               // Максимум предыдущего дня
 double         prevDayLow = 0.0;                // Минимум предыдущего дня
@@ -72,8 +79,13 @@ int OnInit()
    trade.SetTypeFillingBySymbol(_Symbol);
    trade.SetDeviationInPoints(10);
    
+   // Создаем объекты для работы с уровнями, утилитами и торговыми операциями
+   levelsCalculator = new CLevelsCalculator(_Symbol, InpDebugMode);
+   tradingUtils = new CTradingUtils(_Symbol, InpTradeMondayEnabled, InpDebugMode);
+   tradingOperations = new CTradingOperations(_Symbol, InpMagicNumber, GetPointer(trade), InpDebugMode);
+   
    // Рассчитываем правильное значение пункта для золота
-   CalculatePointValue();
+   pointValue = tradingUtils.CalculatePointValue();
    
    // Инициализируем переменные
    InitializeDailyData();
@@ -96,8 +108,16 @@ void OnDeinit(const int reason)
    // При удалении советника закрываем все позиции
    if(reason == REASON_REMOVE || reason == REASON_PROGRAM || reason == REASON_CLOSE)
    {
-      CloseAllPositions();
+      tradingOperations.CloseAllPositions();
    }
+   
+   // Освобождаем память
+   if(CheckPointer(levelsCalculator) == POINTER_DYNAMIC)
+      delete levelsCalculator;
+   if(CheckPointer(tradingUtils) == POINTER_DYNAMIC)
+      delete tradingUtils;
+   if(CheckPointer(tradingOperations) == POINTER_DYNAMIC)
+      delete tradingOperations;
 }
 
 //+------------------------------------------------------------------+
@@ -113,136 +133,21 @@ void InitializeDailyData()
    currentDay = StringToTime(StringFormat("%04d.%02d.%02d 00:00", dt.year, dt.mon, dt.day));
    
    // Получаем данные предыдущего дня
-   CalculatePreviousDayHighLow();
+   levelsCalculator.CalculatePreviousDayHighLow(prevDayHigh, prevDayLow);
    
    // Сбрасываем флаги
    ResetDailyFlags();
    
    // Рассчитываем базовый размер лота
-   baseLotSize = CalculateBaseLotSize();
+   baseLotSize = tradingUtils.CalculateBaseLotSize();
    
    if(InpDebugMode)
    {
+      Print("DEBUG: Инициализация дня завершена. prevDayHigh: ", prevDayHigh,
+            ", prevDayLow: ", prevDayLow, ", baseLotSize: ", baseLotSize);
    }
 }
 
-//+------------------------------------------------------------------+
-//| Функция расчета максимума и минимума за период 16:00-20:00       |
-//| предыдущего дня с проверкой на дневные экстремумы                |
-//+------------------------------------------------------------------+
-void CalculatePreviousDayHighLow()
-{
-   // Получаем текущее время
-   datetime currentTime = TimeCurrent();
-   MqlDateTime dt;
-   TimeToStruct(currentTime, dt);
-   
-   // Получаем дневные максимум и минимум предыдущего дня
-   double dailyHigh = iHigh(_Symbol, PERIOD_D1, 1);
-   double dailyLow = iLow(_Symbol, PERIOD_D1, 1);
-   
-   // Формируем время начала и конца периода предыдущего дня (16:00-20:00)
-   datetime prevDayStart = StringToTime(StringFormat("%04d.%02d.%02d 16:00", dt.year, dt.mon, dt.day - 1));
-   datetime prevDayEnd = StringToTime(StringFormat("%04d.%02d.%02d 20:00", dt.year, dt.mon, dt.day - 1));
-   
-   // Получаем данные за период 16:00-20:00 предыдущего дня (M5 = 5-минутные бары)
-   double highArray[], lowArray[];
-   datetime timeArray[];
-   
-   // Копируем данные за последние несколько дней, чтобы найти нужный период
-   int barsCount = 500; // Достаточно баров для поиска нужного периода
-   
-   if(CopyHigh(_Symbol, PERIOD_M5, 0, barsCount, highArray) < 0 ||
-      CopyLow(_Symbol, PERIOD_M5, 0, barsCount, lowArray) < 0 ||
-      CopyTime(_Symbol, PERIOD_M5, 0, barsCount, timeArray) < 0)
-   {
-      // Если не удалось получить данные, используем fallback
-      prevDayHigh = dailyHigh;
-      prevDayLow = dailyLow;
-      
-      if(prevDayHigh <= 0 || prevDayLow <= 0)
-      {
-         prevDayHigh = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-         prevDayLow = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-      }
-      return;
-   }
-   
-   // Ищем максимум и минимум в период 16:00-20:00 предыдущего дня
-   double sessionHigh = 0.0;
-   double sessionLow = 999999.0;
-   bool foundData = false;
-   
-   for(int i = 0; i < barsCount; i++)
-   {
-      // Проверяем, попадает ли время бара в нужный период
-      if(timeArray[i] >= prevDayStart && timeArray[i] <= prevDayEnd)
-      {
-         foundData = true;
-         
-         if(highArray[i] > sessionHigh) sessionHigh = highArray[i];
-         if(lowArray[i] < sessionLow) sessionLow = lowArray[i];
-      }
-   }
-   
-   // Если не нашли данные за нужный период, используем дневные уровни
-   if(!foundData || sessionHigh <= 0 || sessionLow <= 0)
-   {
-      prevDayHigh = dailyHigh;
-      prevDayLow = dailyLow;
-      
-      if(prevDayHigh <= 0 || prevDayLow <= 0)
-      {
-         prevDayHigh = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-         prevDayLow = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-      }
-      return;
-   }
-   
-   // Применяем фильтр: используем уровни сессии только если они совпадают с дневными экстремумами
-   // Для HIGH: используем sessionHigh только если он равен dailyHigh
-   // Для LOW: используем sessionLow только если он равен dailyLow
-   
-   double tolerance = 0.01; // Допуск для сравнения цен (1 пункт)
-   
-   // Проверяем HIGH
-   if(MathAbs(sessionHigh - dailyHigh) <= tolerance)
-   {
-      prevDayHigh = sessionHigh; // Максимум сессии совпадает с дневным максимумом
-   }
-   else
-   {
-      prevDayHigh = 0.0; // Максимум сессии не является дневным максимумом - не торгуем пробой вверх
-   }
-   
-   // Проверяем LOW
-   if(MathAbs(sessionLow - dailyLow) <= tolerance)
-   {
-      prevDayLow = sessionLow; // Минимум сессии совпадает с дневным минимумом
-   }
-   else
-   {
-      prevDayLow = 999999.0; // Минимум сессии не является дневным минимумом - не торгуем пробой вниз
-   }
-   
-   // Если ни один из уровней не подходит, используем дневные уровни как fallback
-   if(prevDayHigh <= 0 && prevDayLow >= 999999.0)
-   {
-      prevDayHigh = dailyHigh;
-      prevDayLow = dailyLow;
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Функция расчета правильного значения пункта для золота           |
-//+------------------------------------------------------------------+
-void CalculatePointValue()
-{
-   // Для золота с 2 знаками после запятой (2000.50):
-   // 100 пунктов = 1.00 = $1
-   // Значит 1 пункт = 0.01
-   pointValue = _Point;
-}
 
 //+------------------------------------------------------------------+
 //| Функция сброса дневных флагов                                    |
@@ -265,27 +170,6 @@ void ResetDailyFlags()
    hourlySellBreakoutTriggered = false;
 }
 
-//+------------------------------------------------------------------+
-//| Функция расчета базового размера лота                            |
-//+------------------------------------------------------------------+
-double CalculateBaseLotSize()
-{
-   double accountBalance = AccountInfoDouble(ACCOUNT_BALANCE);
-   double lotSize = (accountBalance / 1000.0) * 0.01; // 0.01 лота на каждую $1000
-   
-   // Ограничиваем минимальный и максимальный размер лота
-   double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
-   double maxLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
-   double lotStep = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
-   
-   if(lotSize < minLot) lotSize = minLot;
-   if(lotSize > maxLot) lotSize = maxLot;
-   
-   // Округляем до шага изменения размера лота
-   lotSize = MathFloor(lotSize / lotStep) * lotStep;
-   
-   return lotSize;
-}
 
 //+------------------------------------------------------------------+
 //| Функция проверки смены дня                                       |
@@ -307,22 +191,6 @@ bool IsNewDay()
    return false;
 }
 
-//+------------------------------------------------------------------+
-//| Функция проверки времени закрытия позиций (22:00)                |
-//+------------------------------------------------------------------+
-bool IsTimeToClosePositions()
-{
-   MqlDateTime dt;
-   TimeToStruct(TimeCurrent(), dt);
-   
-   // Проверяем, наступило ли время 22:00 или позже
-   if(dt.hour >= 22)
-   {
-      return true;
-   }
-   
-   return false;
-}
 
 //+------------------------------------------------------------------+
 //| Функция расчета уровней за последний час                         |
@@ -393,7 +261,8 @@ void CheckHourlyBreakouts()
       // Переключаемся на покупки независимо от текущей последовательности
       isInSellSequence = false;
       isInBuySequence = true;
-      OpenNextTradeInSequence();
+      double lotSize = tradingOperations.CalculateLotSize(baseLotSize, InpLotMultiplier, currentTradeSequence);
+      tradingOperations.OpenNextTradeInSequence(true, lotSize, pointValue, InpRecoveryStopLossPoints, InpRecoveryTakeProfitPoints, lastTradeTicket, waitingForHourlyBreakout);
       
       waitingForHourlyBreakout = false;
    }
@@ -411,71 +280,13 @@ void CheckHourlyBreakouts()
       // Переключаемся на продажи независимо от текущей последовательности
       isInBuySequence = false;
       isInSellSequence = true;
-      OpenNextTradeInSequence();
+      double lotSize = tradingOperations.CalculateLotSize(baseLotSize, InpLotMultiplier, currentTradeSequence);
+      tradingOperations.OpenNextTradeInSequence(false, lotSize, pointValue, InpRecoveryStopLossPoints, InpRecoveryTakeProfitPoints, lastTradeTicket, waitingForHourlyBreakout);
       
       waitingForHourlyBreakout = false;
    }
 }
 
-//+------------------------------------------------------------------+
-//| Функция открытия следующей сделки в последовательности           |
-//+------------------------------------------------------------------+
-void OpenNextTradeInSequence()
-{
-   if(dayTradingComplete) return;
-   
-   // Рассчитываем размер лота для текущей сделки в последовательности
-   double lotSize = baseLotSize * MathPow(InpLotMultiplier, currentTradeSequence - 1);
-   
-   // Ограничиваем максимальный размер лота
-   double maxLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
-   if(lotSize > maxLot) lotSize = maxLot;
-   
-   // Округляем до шага изменения размера лота
-   double lotStep = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
-   lotSize = MathFloor(lotSize / lotStep) * lotStep;
-   
-   if(isInBuySequence)
-   {
-      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-      double stopLoss = ask - (InpRecoveryStopLossPoints * pointValue);
-      double takeProfit = ask + (InpRecoveryTakeProfitPoints * pointValue);
-      
-      if(InpDebugMode)
-      {
-      }
-      
-      if(trade.Buy(lotSize, _Symbol, 0, stopLoss, takeProfit))
-      {
-         lastTradeTicket = trade.ResultOrder();
-      }
-      else
-      {
-         // Если не удалось открыть сделку, сбрасываем ожидание
-         waitingForHourlyBreakout = false;
-      }
-   }
-   else if(isInSellSequence)
-   {
-      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-      double stopLoss = bid + (InpRecoveryStopLossPoints * pointValue);
-      double takeProfit = bid - (InpRecoveryTakeProfitPoints * pointValue);
-      
-      if(InpDebugMode)
-      {
-      }
-      
-      if(trade.Sell(lotSize, _Symbol, 0, stopLoss, takeProfit))
-      {
-         lastTradeTicket = trade.ResultOrder();
-      }
-      else
-      {
-         // Если не удалось открыть сделку, сбрасываем ожидание
-         waitingForHourlyBreakout = false;
-      }
-   }
-}
 
 //+------------------------------------------------------------------+
 //| Функция проверки пробоя уровней                                  |
@@ -484,9 +295,39 @@ void CheckBreakouts()
 {
    if(dayTradingComplete) return;
    
+   // Проверяем, разрешена ли торговля в текущий день
+   if(!tradingUtils.IsTradingAllowedToday()) return;
+   
+   // Валидация уровней - если уровни недействительны, не торгуем
+   if(!levelsCalculator.AreBreakoutLevelsValid(prevDayHigh, prevDayLow))
+   {
+      if(InpDebugMode)
+      {
+         Print("DEBUG: Уровни пробоя недействительны. Торговля пропущена.");
+      }
+      return;
+   }
+   
+   // Проверяем, прошло ли достаточно времени после смены дня
+   if(!tradingUtils.IsEnoughTimePassedAfterDayChange())
+   {
+      if(InpDebugMode)
+      {
+         Print("DEBUG: Недостаточно времени прошло после смены дня. Ожидание...");
+      }
+      return;
+   }
+   
    double currentPrice = SymbolInfoDouble(_Symbol, SYMBOL_LAST);
    double buyBreakoutLevel = prevDayHigh + (InpBreakoutPoints * pointValue);
    double sellBreakoutLevel = prevDayLow - (InpBreakoutPoints * pointValue);
+   
+   if(InpDebugMode)
+   {
+      Print("DEBUG: Текущая цена: ", currentPrice,
+            ", Уровень пробоя вверх: ", buyBreakoutLevel,
+            ", Уровень пробоя вниз: ", sellBreakoutLevel);
+   }
    
    // Проверяем пробой максимума (сигнал на покупку)
    if(!buyBreakoutTriggered && currentPrice > buyBreakoutLevel)
@@ -494,12 +335,17 @@ void CheckBreakouts()
       buyBreakoutTriggered = true;
       if(InpDebugMode)
       {
+         Print("DEBUG: Пробой максимума! Цена: ", currentPrice, " > ", buyBreakoutLevel);
       }
       
       // Если нет активных последовательностей, начинаем новую
       if(!isInBuySequence && !isInSellSequence)
       {
-         StartBuySequence();
+         if(tradingOperations.StartBuySequence(baseLotSize, pointValue, InpStopLossPoints, InpTakeProfitPoints, lastTradeTicket))
+         {
+            isInBuySequence = true;
+            currentTradeSequence = 1;
+         }
       }
    }
    
@@ -509,75 +355,22 @@ void CheckBreakouts()
       sellBreakoutTriggered = true;
       if(InpDebugMode)
       {
+         Print("DEBUG: Пробой минимума! Цена: ", currentPrice, " < ", sellBreakoutLevel);
       }
       
       // Если нет активных последовательностей, начинаем новую
       if(!isInBuySequence && !isInSellSequence)
       {
-         StartSellSequence();
+         if(tradingOperations.StartSellSequence(baseLotSize, pointValue, InpStopLossPoints, InpTakeProfitPoints, lastTradeTicket))
+         {
+            isInSellSequence = true;
+            currentTradeSequence = 1;
+         }
       }
    }
 }
 
-//+------------------------------------------------------------------+
-//| Функция начала последовательности покупок                        |
-//+------------------------------------------------------------------+
-void StartBuySequence()
-{
-   if(dayTradingComplete) return;
-   
-   isInBuySequence = true;
-   currentTradeSequence = 1;
-   
-   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-   double stopLoss = ask - (InpStopLossPoints * pointValue);
-   double takeProfit = ask + (InpTakeProfitPoints * pointValue);
-   // Для первой сделки используем базовый размер лота
-   double lotSize = baseLotSize;
-   
-   if(InpDebugMode)
-   {
-   }
-   
-   if(trade.Buy(lotSize, _Symbol, 0, stopLoss, takeProfit))
-   {
-      lastTradeTicket = trade.ResultOrder();
-   }
-   else
-   {
-      isInBuySequence = false;
-   }
-}
 
-//+------------------------------------------------------------------+
-//| Функция начала последовательности продаж                         |
-//+------------------------------------------------------------------+
-void StartSellSequence()
-{
-   if(dayTradingComplete) return;
-   
-   isInSellSequence = true;
-   currentTradeSequence = 1;
-   
-   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   double stopLoss = bid + (InpStopLossPoints * pointValue);
-   double takeProfit = bid - (InpTakeProfitPoints * pointValue);
-   // Для первой сделки используем базовый размер лота
-   double lotSize = baseLotSize;
-   
-   if(InpDebugMode)
-   {
-   }
-   
-   if(trade.Sell(lotSize, _Symbol, 0, stopLoss, takeProfit))
-   {
-      lastTradeTicket = trade.ResultOrder();
-   }
-   else
-   {
-      isInSellSequence = false;
-   }
-}
 
 //+------------------------------------------------------------------+
 //| Функция открытия противоположной позиции после убытка            |
@@ -585,6 +378,9 @@ void StartSellSequence()
 void OpenOppositePosition()
 {
    if(dayTradingComplete) return;
+   
+   // Проверяем, разрешена ли торговля в текущий день
+   if(!tradingUtils.IsTradingAllowedToday()) return;
    
    currentTradeSequence++;
    
@@ -620,74 +416,11 @@ void OpenOppositePosition()
    else
    {
       // Для 2-й сделки используем обычную логику немедленного открытия
-      double lotSize = baseLotSize * MathPow(InpLotMultiplier, currentTradeSequence - 1);
-      
-      // Ограничиваем максимальный размер лота
-      double maxLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
-      if(lotSize > maxLot) lotSize = maxLot;
-      
-      // Округляем до шага изменения размера лота
-      double lotStep = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
-      lotSize = MathFloor(lotSize / lotStep) * lotStep;
-      
-      if(isInBuySequence)
-      {
-         // Переключаемся на продажи
-         isInBuySequence = false;
-         isInSellSequence = true;
-         
-         double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-         double stopLoss = bid + (InpRecoveryStopLossPoints * pointValue);
-         double takeProfit = bid - (InpRecoveryTakeProfitPoints * pointValue);
-         
-         if(InpDebugMode)
-         {
-         }
-         
-         if(trade.Sell(lotSize, _Symbol, 0, stopLoss, takeProfit))
-         {
-            lastTradeTicket = trade.ResultOrder();
-         }
-      }
-      else if(isInSellSequence)
-      {
-         // Переключаемся на покупки
-         isInSellSequence = false;
-         isInBuySequence = true;
-         
-         double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-         double stopLoss = ask - (InpRecoveryStopLossPoints * pointValue);
-         double takeProfit = ask + (InpRecoveryTakeProfitPoints * pointValue);
-         
-         if(InpDebugMode)
-         {
-         }
-         
-         if(trade.Buy(lotSize, _Symbol, 0, stopLoss, takeProfit))
-         {
-            lastTradeTicket = trade.ResultOrder();
-         }
-      }
+      double lotSize = tradingOperations.CalculateLotSize(baseLotSize, InpLotMultiplier, currentTradeSequence);
+      tradingOperations.OpenOppositePosition(isInBuySequence, isInSellSequence, lotSize, pointValue, InpRecoveryStopLossPoints, InpRecoveryTakeProfitPoints, lastTradeTicket);
    }
 }
 
-//+------------------------------------------------------------------+
-//| Функция закрытия всех позиций                                    |
-//+------------------------------------------------------------------+
-void CloseAllPositions()
-{
-   for(int i = PositionsTotal() - 1; i >= 0; i--)
-   {
-      ulong ticket = PositionGetTicket(i);
-      if(ticket <= 0) continue;
-      
-      if(PositionGetString(POSITION_SYMBOL) == _Symbol &&
-         PositionGetInteger(POSITION_MAGIC) == InpMagicNumber)
-      {
-         trade.PositionClose(ticket);
-      }
-   }
-}
 
 //+------------------------------------------------------------------+
 //| Функция обработки закрытия позиций                               |
@@ -761,9 +494,9 @@ void ResetSequenceFlags()
 void OnTick()
 {
    // Проверяем время закрытия позиций (22:00)
-   if(IsTimeToClosePositions())
+   if(tradingUtils.IsTimeToClosePositions())
    {
-      CloseAllPositions();
+      tradingOperations.CloseAllPositions();
       dayTradingComplete = true;
       return;
    }
@@ -776,7 +509,7 @@ void OnTick()
       }
       
       // Закрываем все открытые позиции при смене дня
-      CloseAllPositions();
+      tradingOperations.CloseAllPositions();
       
       // Инициализируем данные нового дня
       InitializeDailyData();
