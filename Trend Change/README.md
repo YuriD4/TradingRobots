@@ -20,7 +20,7 @@ The robot identifies trend changes based on the following pattern:
    - Maximum 15 bars between the patterns
    - Price breaks through key levels
    - The pattern's extreme is the day's extreme
-   - The pattern's extreme is also the 12-hour extreme (additional filter)
+   - The pattern's extreme is also the 2-day extreme (today and yesterday) (additional filter - if enabled)
 
 3. **Trading Rules**:
    - Fixed lot size of 0.01
@@ -54,6 +54,8 @@ The robot can be configured through the following input parameters in MetaTrader
 - `InpCloseOnOppositeSignal` - Close positions on opposite signals (default: true)
 - `InpTradingStartHour` - Start of trading hours (default: 0)
 - `InpTradingEndHour` - End of trading hours (default: 23)
+- `InpForceCloseAfterHours` - Force close positions outside trading hours (default: false)
+- `InpValidateTwoDayExtremes` - Validate that range extremes are 2-day extremes (today + yesterday) (default: true)
 - `InpUseDailyMartingale` - Enable daily martingale system (default: true)
 - `InpMartingaleMultiplier` - Lot size multiplier after losing trades (default: 2.0)
 - `InpDebugMode` - Enable debug logging (default: true)
@@ -81,7 +83,7 @@ The robot correctly calculates points for different types of trading pairs:
    - Identify trend change signals
    - Open positions based on signals
    - Manage open positions with stop-loss, take-profit, and trailing stop
-   - Close positions at the end of trading day (23:00) or on opposite signals
+   - Close positions on opposite signals or outside trading hours (if enabled)
 
 ## Risk Management
 

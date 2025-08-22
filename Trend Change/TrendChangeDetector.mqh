@@ -6,6 +6,7 @@
 #property strict
 
 #include "EngulfingPatternDetector.mqh"
+#include "TrendChangeConfig.mqh"
 
 //+------------------------------------------------------------------+
 //| Класс для определения сигналов смены тренда                     |
@@ -15,6 +16,7 @@ class CTrendChangeDetector
 private:
    string            m_symbol;              // Торговый символ
    bool              m_debugMode;           // Режим отладки
+   CTrendChangeConfig* m_config;           // Конфигурация
    CEngulfingPatternDetector* m_patternDetector; // Детектор паттернов
    
    // Параметры для отслеживания смены тренда
@@ -28,7 +30,7 @@ private:
    
 public:
    // Конструктор и деструктор
-   CTrendChangeDetector(string symbol, bool debugMode = false);
+   CTrendChangeDetector(string symbol, CTrendChangeConfig* config, bool debugMode = false);
    ~CTrendChangeDetector();
    
    // Основные методы
@@ -47,17 +49,18 @@ private:
    bool              CheckDowntrendCondition(datetime currentBarTime);
    bool              IsDayLow(double price);
    bool              IsDayHigh(double price);
-   bool              Is12HourLow(double price);
-   bool              Is12HourHigh(double price);
+   bool              IsTwoDayLow(double price);
+   bool              IsTwoDayHigh(double price);
 };
 
 //+------------------------------------------------------------------+
 //| Конструктор класса                                               |
 //+------------------------------------------------------------------+
-CTrendChangeDetector::CTrendChangeDetector(string symbol, bool debugMode = false)
+CTrendChangeDetector::CTrendChangeDetector(string symbol, CTrendChangeConfig* config, bool debugMode = false)
 {
    m_symbol = symbol;
    m_debugMode = debugMode;
+   m_config = config;
    m_patternDetector = new CEngulfingPatternDetector(symbol, debugMode);
    m_maxBarsBetweenPatterns = 15;
    m_lastUsedBullishEngulfingTime = 0;
@@ -220,14 +223,28 @@ bool CTrendChangeDetector::CheckUptrendCondition(datetime currentBarTime)
       Print("DEBUG TrendChangeDetector: minPrice in range = ", minPrice);
    }
    
-   // Проверяем, является ли это минимальной ценой текущего дня
-   if(!IsDayLow(minPrice))
+   // Проверяем условие экстремума в зависимости от настроек
+   if(m_config.ValidateTwoDayExtremes())
    {
-      if(m_debugMode)
+      // Проверяем, является ли это минимальной ценой текущего дня
+      if(!IsDayLow(minPrice))
       {
-         Print("DEBUG TrendChangeDetector: Uptrend check failed - minPrice is not day low");
+         if(m_debugMode)
+         {
+            Print("DEBUG TrendChangeDetector: Uptrend check failed - minPrice is not day low");
+         }
+         return false;
       }
-      return false;
+      
+      // Дополнительная проверка: минимум диапазона должен быть самой низкой ценой за сегодня и вчера
+      if(!IsTwoDayLow(minPrice))
+      {
+         if(m_debugMode)
+         {
+            Print("DEBUG TrendChangeDetector: Uptrend check failed - minPrice is not two-day low");
+         }
+         return false;
+      }
    }
    
    if(m_debugMode)
@@ -282,13 +299,17 @@ bool CTrendChangeDetector::CheckDowntrendCondition(datetime currentBarTime)
          maxPrice = barHigh;
    }
    
-   // Проверяем, является ли это максимальной ценой текущего дня
-   if(!IsDayHigh(maxPrice))
-      return false;
-   
-   // Дополнительная проверка: максимум диапазона должен быть самой высокой ценой за последние 12 часов
-   if(!Is12HourHigh(maxPrice))
-      return false;
+   // Проверяем условие экстремума в зависимости от настроек
+   if(m_config.ValidateTwoDayExtremes())
+   {
+      // Проверяем, является ли это максимальной ценой текущего дня
+      if(!IsDayHigh(maxPrice))
+         return false;
+      
+      // Дополнительная проверка: максимум диапазона должен быть самой высокой ценой за сегодня и вчера
+      if(!IsTwoDayHigh(maxPrice))
+         return false;
+   }
    
    return true;
 }
@@ -355,15 +376,26 @@ void CTrendChangeDetector::ResetSignals()
 }
 
 //+------------------------------------------------------------------+
-//| Метод проверки, является ли цена минимумом за последние 12 часов |
+//| Метод проверки, является ли цена минимумом за сегодня и вчера    |
 //+------------------------------------------------------------------+
-bool CTrendChangeDetector::Is12HourLow(double price)
+bool CTrendChangeDetector::IsTwoDayLow(double price)
 {
-   // Получаем количество баров за 12 часов
-   int barsIn12Hours = (12 * 3600) / PeriodSeconds(_Period);
+   // Проверяем минимум за сегодняшний день
+   datetime today = iTime(m_symbol, PERIOD_D1, 0);
+   datetime yesterday = iTime(m_symbol, PERIOD_D1, 1);
    
-   for(int i = 0; i < barsIn12Hours; i++)
+   // Получаем количество баров за два дня
+   int barsPerDay = PeriodSeconds(PERIOD_D1) / PeriodSeconds(_Period);
+   int totalBarsToCheck = barsPerDay * 2;
+   
+   for(int i = 0; i < totalBarsToCheck; i++)
    {
+      datetime barTime = iTime(m_symbol, _Period, i);
+      
+      // Проверяем только бары сегодняшнего и вчерашнего дня
+      if(barTime < yesterday)
+         break;
+         
       double barLow = iLow(m_symbol, _Period, i);
       if(barLow < price)
       {
@@ -375,15 +407,26 @@ bool CTrendChangeDetector::Is12HourLow(double price)
 }
 
 //+------------------------------------------------------------------+
-//| Метод проверки, является ли цена максимумом за последние 12 часов |
+//| Метод проверки, является ли цена максимумом за сегодня и вчера   |
 //+------------------------------------------------------------------+
-bool CTrendChangeDetector::Is12HourHigh(double price)
+bool CTrendChangeDetector::IsTwoDayHigh(double price)
 {
-   // Получаем количество баров за 12 часов
-   int barsIn12Hours = (12 * 3600) / PeriodSeconds(_Period);
+   // Проверяем максимум за сегодняшний день
+   datetime today = iTime(m_symbol, PERIOD_D1, 0);
+   datetime yesterday = iTime(m_symbol, PERIOD_D1, 1);
    
-   for(int i = 0; i < barsIn12Hours; i++)
+   // Получаем количество баров за два дня
+   int barsPerDay = PeriodSeconds(PERIOD_D1) / PeriodSeconds(_Period);
+   int totalBarsToCheck = barsPerDay * 2;
+   
+   for(int i = 0; i < totalBarsToCheck; i++)
    {
+      datetime barTime = iTime(m_symbol, _Period, i);
+      
+      // Проверяем только бары сегодняшнего и вчерашнего дня
+      if(barTime < yesterday)
+         break;
+         
       double barHigh = iHigh(m_symbol, _Period, i);
       if(barHigh > price)
       {

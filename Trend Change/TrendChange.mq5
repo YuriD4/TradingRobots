@@ -25,6 +25,8 @@ input bool     InpUseTrailingStop = true;        // Использовать т�
 input bool     InpCloseOnOppositeSignal = true;  // Закрывать при противоположном сигнале
 input int      InpTradingStartHour = 0;          // Начало торговли (часы)
 input int      InpTradingEndHour = 23;           // Окончание торговли (часы)
+input bool     InpForceCloseAfterHours = false;  // Принудительно закрывать позиции вне торговых часов
+input bool     InpValidateTwoDayExtremes = true; // Проверять что экстремум диапазона является экстремумом за сегодня и вчера
 input bool     InpUseDailyMartingale = true;     // Использовать дневной мартингейл
 input double   InpMartingaleMultiplier = 2.0;    // Мультипликатор лота после неудачной сделки
 input bool     InpDebugMode = true;              // Режим отладки
@@ -68,6 +70,8 @@ int OnInit()
       InpCloseOnOppositeSignal,
       InpTradingStartHour,
       InpTradingEndHour,
+      InpForceCloseAfterHours,
+      InpValidateTwoDayExtremes,
       InpUseDailyMartingale,
       InpMartingaleMultiplier,
       InpDebugMode
@@ -78,7 +82,7 @@ int OnInit()
    
    utils = new CTrendChangeUtils(_Symbol, config.DebugMode());
    patternDetector = new CEngulfingPatternDetector(_Symbol, config.DebugMode());
-   trendChangeDetector = new CTrendChangeDetector(_Symbol, config.DebugMode());
+   trendChangeDetector = new CTrendChangeDetector(_Symbol, config, config.DebugMode());
    tradingOps = new CTradingOperations(_Symbol, config.MagicNumber(), GetPointer(trade), config.DebugMode());
    
    // Настраиваем торговый объект
@@ -123,8 +127,8 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
-   // Проверяем время закрытия позиций (23:00)
-   if(utils.IsTimeToClosePositions(23))
+   // Проверяем, нужно ли принудительно закрывать позиции вне торговых часов
+   if(config.ForceCloseAfterHours() && !utils.IsTradingTimeAllowed(config.TradingStartHour(), config.TradingEndHour()))
    {
       tradingOps.CloseAllPositions();
       ResetPositionTracking();
