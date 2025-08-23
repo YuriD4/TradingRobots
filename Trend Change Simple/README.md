@@ -62,6 +62,7 @@ The robot can be configured through the following input parameters:
 ### Reversal System
 - **`InpMaxReversals`** - Maximum number of reversals (0 = no reversals, default: 3)
 - **`InpLotScalingFactor`** - Lot scaling factor for reversals (1.0 = no scaling, 2.0 = doubling, default: 1.0)
+- **`InpReverseOnBreakeven`** - Whether to reverse when position is closed at breakeven (default: true)
 
 ### Time Settings
 - **`InpTradingStartHour`** - Start of trading hours (default: 0)

@@ -25,6 +25,7 @@ input double   InpLotScalingFactor = 1.0;        // Коэффициент ув�
 input int      InpTradingStartHour = 0;          // Начало торговли (часы)
 input int      InpTradingEndHour = 23;           // Окончание торговли (часы)
 input bool     InpDebugMode = true;              // Режим отладки
+input bool     InpReverseOnBreakeven = true;     // Разворачиваться ли при закрытии по безубытку
 
 // Глобальные объекты
 CTrade                          trade;                    // Объект для торговых операций
@@ -77,7 +78,8 @@ int OnInit()
         InpLotScalingFactor,
         InpTradingStartHour,
         InpTradingEndHour,
-        InpDebugMode
+        InpDebugMode,
+        InpReverseOnBreakeven
     );
     
     // Создаем вспомогательные объекты
@@ -324,6 +326,7 @@ void ProcessClosedPosition()
     // Считаем стоп-лоссом: DEAL_REASON_SL и DEAL_REASON_SO
     bool isStopLoss = (dealReason == DEAL_REASON_SL || dealReason == DEAL_REASON_SO);
     bool isTakeProfit = (dealReason == DEAL_REASON_TP);
+    bool isBreakeven = trailingStopActivated && !isStopLoss && !isTakeProfit;
     
     // Если не можем определить по DEAL_REASON, используем profit
     if(dealReason == -1 || dealReason == DEAL_REASON_CLIENT || dealReason == DEAL_REASON_EXPERT)
@@ -332,14 +335,15 @@ void ProcessClosedPosition()
             Print("DEBUG: Using profit-based determination");
         isStopLoss = (profit < 0);
         isTakeProfit = (profit >= 0);
+        isBreakeven = false; // Не можем определить по profit
     }
     
     // Анализируем результат сделки
-    if(isTakeProfit)
+    if(isTakeProfit || (isBreakeven && !config.ReverseOnBreakeven()))
     {
-        // Прибыльная сделка (TP или breakeven SL) → блокируем систему до завтра
+        string reasonText = isTakeProfit ? "TAKE PROFIT" : "BREAKEVEN (treated as TP)";
         if(config.DebugMode())
-            Print("DEBUG: *** PROFITABLE TRADE *** → System blocked until tomorrow");
+            Print("DEBUG: *** ", reasonText, " *** → System blocked until tomorrow");
             
         systemState = STATE_BLOCKED_UNTIL_TOMORROW;
         lastBlockedDay = iTime(_Symbol, PERIOD_D1, 0);
@@ -349,11 +353,11 @@ void ProcessClosedPosition()
         lastTradeDirection = WRONG_VALUE;
         trailingStopActivated = false;
     }
-    else if(isStopLoss)
+    else if(isStopLoss || (isBreakeven && config.ReverseOnBreakeven()))
     {
-        // Убыточная сделка (SL) → немедленный разворот
+        string reasonText = isStopLoss ? "STOP LOSS" : "BREAKEVEN (treated as SL)";
         if(config.DebugMode())
-            Print("DEBUG: *** STOP LOSS *** → Immediate reversal");
+            Print("DEBUG: *** ", reasonText, " *** → Immediate reversal");
             
         if(currentReversalCount < config.MaxReversals())
         {

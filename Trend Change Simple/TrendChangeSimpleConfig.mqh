@@ -22,6 +22,7 @@ private:
     int               m_tradingStartHour;      // Начало торговли (часы)
     int               m_tradingEndHour;        // Окончание торговли (часы)
     bool              m_debugMode;             // Режим отладки
+    bool              m_reverseOnBreakeven;    // Разворачиваться ли при закрытии по безубытку
     
 public:
     // Конструктор
@@ -35,7 +36,8 @@ public:
         double lotScalingFactor = 1.0,
         int tradingStartHour = 0,
         int tradingEndHour = 23,
-        bool debugMode = true
+        bool debugMode = true,
+        bool reverseOnBreakeven = true
     );
     
     // Методы доступа к параметрам
@@ -49,6 +51,7 @@ public:
     int               TradingStartHour() const { return m_tradingStartHour; }
     int               TradingEndHour() const { return m_tradingEndHour; }
     bool              DebugMode() const { return m_debugMode; }
+    bool              ReverseOnBreakeven() const { return m_reverseOnBreakeven; }
 };
 
 //+------------------------------------------------------------------+
@@ -64,7 +67,8 @@ CTrendChangeSimpleConfig::CTrendChangeSimpleConfig(
     double lotScalingFactor,
     int tradingStartHour,
     int tradingEndHour,
-    bool debugMode
+    bool debugMode,
+    bool reverseOnBreakeven
 )
 {
     m_magicNumber = magicNumber;
@@ -77,5 +81,6 @@ CTrendChangeSimpleConfig::CTrendChangeSimpleConfig(
     m_tradingStartHour = tradingStartHour;
     m_tradingEndHour = tradingEndHour;
     m_debugMode = debugMode;
+    m_reverseOnBreakeven = reverseOnBreakeven;
 }
 //+------------------------------------------------------------------+
