@@ -19,16 +19,25 @@ The robot identifies trend changes based on the following pattern:
    - A sequence of opposite engulfing patterns is detected
    - Maximum 15 bars between the patterns
    - Price breaks through key levels
-   - The pattern's extreme is the day's extreme
-   - The pattern's extreme is also the 2-day extreme (today and yesterday) (additional filter - if enabled)
+   - **Strong breakout validation**: Second engulfing must break through first engulfing:
+     - For uptrend: bullish engulfing close must be at least 1 point above bearish engulfing high
+     - For downtrend: bearish engulfing close must be at least 1 point below bullish engulfing low
+   - **Day extremes validation**: Pattern extremes must be current day's extremes:
+     - For uptrend: pattern's lowest price must be the day's lowest price
+     - For downtrend: pattern's highest price must be the day's highest price
+   - Engulfing candles must pierce through the previous day's price range boundaries (16:00 to 00:00 server time):
+     - For uptrend: bearish engulfing must pierce below the range's low boundary
+     - For downtrend: bullish engulfing must pierce above the range's high boundary
 
 3. **Trading Rules**:
-   - Fixed lot size of 0.01
+   - Fixed lot size of 0.01 (with optional daily martingale)
    - Entry on trend change signals
    - Distance filter: trade only if current price is within a specified distance from the day's high/low
-   - Dynamic stop-loss calculation:
-     - For buy trades: stop-loss is set at day's low minus 2 points
-     - For sell trades: stop-loss is set at day's high plus 2 points
+   - Stop-loss calculation:
+     - **Automatic mode** (InpFixedStopLoss = 0): Based on pattern extremes minus/plus 2 points
+       - For buy trades: stop-loss is set at pattern's low minus 2 points
+       - For sell trades: stop-loss is set at pattern's high plus 2 points
+     - **Fixed mode** (InpFixedStopLoss > 0): Fixed number of points from entry price
    - Take-profit is calculated as a multiple of the stop-loss distance
    - Optional trailing stop
 
@@ -55,9 +64,9 @@ The robot can be configured through the following input parameters in MetaTrader
 - `InpTradingStartHour` - Start of trading hours (default: 0)
 - `InpTradingEndHour` - End of trading hours (default: 23)
 - `InpForceCloseAfterHours` - Force close positions outside trading hours (default: false)
-- `InpValidateTwoDayExtremes` - Validate that range extremes are 2-day extremes (today + yesterday) (default: true)
 - `InpUseDailyMartingale` - Enable daily martingale system (default: true)
 - `InpMartingaleMultiplier` - Lot size multiplier after losing trades (default: 2.0)
+- `InpFixedStopLoss` - Fixed stop-loss in points (0 = automatic based on pattern extremes) (default: 0)
 - `InpDebugMode` - Enable debug logging (default: true)
 
 ## Point Calculation

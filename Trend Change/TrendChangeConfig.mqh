@@ -22,9 +22,9 @@ private:
    int               m_tradingStartHour;       // Начало торгового времени (часы)
    int               m_tradingEndHour;         // Конец торгового времени (часы)
    bool              m_forceCloseAfterHours;   // Принудительно закрывать позиции вне торговых часов
-   bool              m_validateTwoDayExtremes; // Проверять что экстремум диапазона является экстремумом за сегодня и вчера
    bool              m_useDailyMartingale;     // Использовать дневной мартингейл
    double            m_martingaleMultiplier;   // Мультипликатор лота для мартингейла
+   int               m_fixedStopLoss;          // Фиксированный стоп-лосс в пунктах (0 = автоматический)
    bool              m_debugMode;             // Режим отладки
    
 public:
@@ -40,9 +40,9 @@ public:
       int tradingStartHour = 0,
       int tradingEndHour = 23,
       bool forceCloseAfterHours = false,
-      bool validateTwoDayExtremes = true,
       bool useDailyMartingale = true,
       double martingaleMultiplier = 2.0,
+      int fixedStopLoss = 0,
       bool debugMode = true
    );
    
@@ -57,9 +57,9 @@ public:
    int               TradingStartHour() const { return m_tradingStartHour; }
    int               TradingEndHour() const { return m_tradingEndHour; }
    bool              ForceCloseAfterHours() const { return m_forceCloseAfterHours; }
-   bool              ValidateTwoDayExtremes() const { return m_validateTwoDayExtremes; }
    bool              UseDailyMartingale() const { return m_useDailyMartingale; }
    double            MartingaleMultiplier() const { return m_martingaleMultiplier; }
+   int               FixedStopLoss() const { return m_fixedStopLoss; }
    bool              DebugMode() const { return m_debugMode; }
 };
 
@@ -77,9 +77,9 @@ CTrendChangeConfig::CTrendChangeConfig(
    int tradingStartHour,
    int tradingEndHour,
    bool forceCloseAfterHours,
-   bool validateTwoDayExtremes,
    bool useDailyMartingale,
    double martingaleMultiplier,
+   int fixedStopLoss,
    bool debugMode
 )
 {
@@ -94,9 +94,9 @@ CTrendChangeConfig::CTrendChangeConfig(
    m_tradingStartHour = tradingStartHour;
    m_tradingEndHour = tradingEndHour;
    m_forceCloseAfterHours = forceCloseAfterHours;
-   m_validateTwoDayExtremes = validateTwoDayExtremes;
    m_useDailyMartingale = useDailyMartingale;
    m_martingaleMultiplier = martingaleMultiplier;
+   m_fixedStopLoss = fixedStopLoss;
    m_debugMode = debugMode;
 }
 //+------------------------------------------------------------------+

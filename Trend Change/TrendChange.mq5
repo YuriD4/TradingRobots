@@ -26,9 +26,9 @@ input bool     InpCloseOnOppositeSignal = true;  // Закрывать при п
 input int      InpTradingStartHour = 0;          // Начало торговли (часы)
 input int      InpTradingEndHour = 23;           // Окончание торговли (часы)
 input bool     InpForceCloseAfterHours = false;  // Принудительно закрывать позиции вне торговых часов
-input bool     InpValidateTwoDayExtremes = true; // Проверять что экстремум диапазона является экстремумом за сегодня и вчера
 input bool     InpUseDailyMartingale = true;     // Использовать дневной мартингейл
 input double   InpMartingaleMultiplier = 2.0;    // Мультипликатор лота после неудачной сделки
+input int      InpFixedStopLoss = 0;             // Фиксированный стоп-лосс в пунктах (0 = автоматический)
 input bool     InpDebugMode = true;              // Режим отладки
 
 // Глобальные переменные
@@ -71,9 +71,9 @@ int OnInit()
       InpTradingStartHour,
       InpTradingEndHour,
       InpForceCloseAfterHours,
-      InpValidateTwoDayExtremes,
       InpUseDailyMartingale,
       InpMartingaleMultiplier,
+      InpFixedStopLoss,
       InpDebugMode
    );
    
@@ -263,14 +263,41 @@ void CheckTrendChangeSignal()
 void OpenBuyPosition()
 {
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double stopLoss, stopLossPoints;
    
-   // Рассчитываем стоп-лосс на основе минимума дня
-   double dayLow = iLow(_Symbol, PERIOD_D1, 0);
-   double stopLoss = dayLow - (2 * utils.GetPointValue()); // Минимум дня минус 2 пункта
-   double stopLossPoints = utils.CalculateDistanceInPoints(ask, stopLoss);
+   // Проверяем, используется ли фиксированный стоп-лосс
+   if(config.FixedStopLoss() > 0)
+   {
+      // Фиксированный стоп-лосс
+      stopLossPoints = config.FixedStopLoss();
+      stopLoss = ask - (stopLossPoints * utils.GetPointValue());
+      
+      if(config.DebugMode())
+      {
+         Print("DEBUG OpenBuyPosition: Using fixed stop loss = ", stopLossPoints, " points");
+      }
+   }
+   else
+   {
+      // Автоматический стоп-лосс на основе минимума модели смены тренда
+      double patternLow = trendChangeDetector.GetLastPatternLow();
+      stopLoss = patternLow - (2 * utils.GetPointValue()); // Минимум модели минус 2 пункта
+      stopLossPoints = utils.CalculateDistanceInPoints(ask, stopLoss);
+      
+      if(config.DebugMode())
+      {
+         Print("DEBUG OpenBuyPosition: Using automatic stop loss, Pattern Low=", patternLow);
+      }
+   }
+   
    double takeProfitPoints = stopLossPoints * config.TakeProfitMultiplier();
-   
    double takeProfit = ask + (takeProfitPoints * utils.GetPointValue());
+   
+   if(config.DebugMode())
+   {
+      Print("DEBUG OpenBuyPosition: Ask=", ask, ", Stop Loss=", stopLoss,
+            " (", stopLossPoints, " points), Take Profit=", takeProfit);
+   }
    
    if(tradingOps.Buy(currentLotSize, _Symbol, stopLoss, takeProfit))
    {
@@ -288,14 +315,41 @@ void OpenBuyPosition()
 void OpenSellPosition()
 {
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double stopLoss, stopLossPoints;
    
-   // Рассчитываем стоп-лосс на основе максимума дня
-   double dayHigh = iHigh(_Symbol, PERIOD_D1, 0);
-   double stopLoss = dayHigh + (2 * utils.GetPointValue()); // Максимум дня плюс 2 пункта
-   double stopLossPoints = utils.CalculateDistanceInPoints(stopLoss, bid);
+   // Проверяем, используется ли фиксированный стоп-лосс
+   if(config.FixedStopLoss() > 0)
+   {
+      // Фиксированный стоп-лосс
+      stopLossPoints = config.FixedStopLoss();
+      stopLoss = bid + (stopLossPoints * utils.GetPointValue());
+      
+      if(config.DebugMode())
+      {
+         Print("DEBUG OpenSellPosition: Using fixed stop loss = ", stopLossPoints, " points");
+      }
+   }
+   else
+   {
+      // Автоматический стоп-лосс на основе максимума модели смены тренда
+      double patternHigh = trendChangeDetector.GetLastPatternHigh();
+      stopLoss = patternHigh + (2 * utils.GetPointValue()); // Максимум модели плюс 2 пункта
+      stopLossPoints = utils.CalculateDistanceInPoints(stopLoss, bid);
+      
+      if(config.DebugMode())
+      {
+         Print("DEBUG OpenSellPosition: Using automatic stop loss, Pattern High=", patternHigh);
+      }
+   }
+   
    double takeProfitPoints = stopLossPoints * config.TakeProfitMultiplier();
-   
    double takeProfit = bid - (takeProfitPoints * utils.GetPointValue());
+   
+   if(config.DebugMode())
+   {
+      Print("DEBUG OpenSellPosition: Bid=", bid, ", Stop Loss=", stopLoss,
+            " (", stopLossPoints, " points), Take Profit=", takeProfit);
+   }
    
    if(tradingOps.Sell(currentLotSize, _Symbol, stopLoss, takeProfit))
    {
