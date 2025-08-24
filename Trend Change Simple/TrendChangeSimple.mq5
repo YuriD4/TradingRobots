@@ -121,18 +121,20 @@ int OnInit()
     double rangeLow = rangeManager.GetRangeLow();
     double breakoutDistance = utils.PointsToPrice(config.BreakoutPoints());
     
-    wasPriceAboveRange = (currentPrice > (rangeHigh + breakoutDistance));
-    wasPriceBelowRange = (currentPrice < (rangeLow - breakoutDistance));
-    wasPriceInRange = (!wasPriceAboveRange && !wasPriceBelowRange);
+    // При инициализации НЕ устанавливаем флаги, даже если цена вне диапазона
+    // Это предотвращает регистрацию "пробоев" которые уже произошли до запуска
+    wasPriceAboveRange = false;
+    wasPriceBelowRange = false;
+    wasPriceInRange = true; // Начинаем с предположения, что цена в диапазоне
     
     if(config.DebugMode())
     {
-        Print("DEBUG: Initial price state - Above: ", wasPriceAboveRange ? "YES" : "NO",
-              ", Below: ", wasPriceBelowRange ? "YES" : "NO",
-              ", In range: ", wasPriceInRange ? "YES" : "NO");
+        Print("DEBUG: Initial price state - Starting with price IN RANGE to prevent false breakouts");
         Print("DEBUG: Current price: ", currentPrice);
         Print("DEBUG: Range high: ", rangeHigh, ", Range low: ", rangeLow);
         Print("DEBUG: Breakout distance: ", breakoutDistance);
+        Print("DEBUG: Price ABOVE range: ", (currentPrice > (rangeHigh + breakoutDistance)) ? "YES" : "NO");
+        Print("DEBUG: Price BELOW range: ", (currentPrice < (rangeLow - breakoutDistance)) ? "YES" : "NO");
     }
     
     // Пытаемся определить направление последней открытой позиции
