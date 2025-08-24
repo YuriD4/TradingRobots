@@ -62,30 +62,13 @@ bool CTradingOperationsSimple::Buy(double lotSize, double stopLoss = 0, double t
 {
     double ask = SymbolInfoDouble(m_symbol, SYMBOL_ASK);
     
-    if(m_debugMode)
-    {
-        Print("DEBUG: Opening BUY position. Lot: ", lotSize, ", Symbol: ", m_symbol, 
-              ", Ask: ", ask, ", SL: ", stopLoss, ", TP: ", takeProfit);
-    }
-    
     if(m_trade.Buy(lotSize, m_symbol, 0, stopLoss, takeProfit))
     {
         ulong ticket = m_trade.ResultOrder();
-        
-        if(m_debugMode)
-        {
-            Print("DEBUG: BUY position opened successfully. Ticket: ", ticket);
-        }
-        
         return true;
     }
     else
     {
-        if(m_debugMode)
-        {
-            Print("DEBUG: Failed to open BUY position. Error: ", GetLastError());
-        }
-        
         return false;
     }
 }
@@ -97,30 +80,13 @@ bool CTradingOperationsSimple::Sell(double lotSize, double stopLoss = 0, double 
 {
     double bid = SymbolInfoDouble(m_symbol, SYMBOL_BID);
     
-    if(m_debugMode)
-    {
-        Print("DEBUG: Opening SELL position. Lot: ", lotSize, ", Symbol: ", m_symbol, 
-              ", Bid: ", bid, ", SL: ", stopLoss, ", TP: ", takeProfit);
-    }
-    
     if(m_trade.Sell(lotSize, m_symbol, 0, stopLoss, takeProfit))
     {
         ulong ticket = m_trade.ResultOrder();
-        
-        if(m_debugMode)
-        {
-            Print("DEBUG: SELL position opened successfully. Ticket: ", ticket);
-        }
-        
         return true;
     }
     else
     {
-        if(m_debugMode)
-        {
-            Print("DEBUG: Failed to open SELL position. Error: ", GetLastError());
-        }
-        
         return false;
     }
 }
@@ -130,25 +96,12 @@ bool CTradingOperationsSimple::Sell(double lotSize, double stopLoss = 0, double 
 //+------------------------------------------------------------------+
 bool CTradingOperationsSimple::ClosePosition(ulong ticket)
 {
-    if(m_debugMode)
-    {
-        Print("DEBUG: Closing position #", ticket);
-    }
-    
     if(m_trade.PositionClose(ticket))
     {
-        if(m_debugMode)
-        {
-            Print("DEBUG: Position #", ticket, " closed successfully");
-        }
         return true;
     }
     else
     {
-        if(m_debugMode)
-        {
-            Print("DEBUG: Failed to close position #", ticket, ". Error: ", GetLastError());
-        }
         return false;
     }
 }
@@ -174,11 +127,6 @@ void CTradingOperationsSimple::CloseAllPositions()
             }
         }
     }
-    
-    if(m_debugMode)
-    {
-        Print("DEBUG: Closed ", count, " positions");
-    }
 }
 
 //+------------------------------------------------------------------+
@@ -188,10 +136,6 @@ bool CTradingOperationsSimple::ModifyStopLoss(ulong ticket, double stopLoss)
 {
     if(!PositionSelectByTicket(ticket))
     {
-        if(m_debugMode)
-        {
-            Print("DEBUG: Position #", ticket, " does not exist");
-        }
         return false;
     }
     
@@ -203,18 +147,8 @@ bool CTradingOperationsSimple::ModifyStopLoss(ulong ticket, double stopLoss)
         return true; // Уже установлен на нужном уровне
     }
     
-    if(m_debugMode)
-    {
-        Print("DEBUG: Modifying stop loss for position #", ticket, 
-              ". Current SL: ", currentStopLoss, ", New SL: ", stopLoss);
-    }
-    
     if(m_trade.PositionModify(ticket, stopLoss, currentTakeProfit))
     {
-        if(m_debugMode)
-        {
-            Print("DEBUG: Stop loss modified successfully for position #", ticket);
-        }
         return true;
     }
     else
@@ -230,11 +164,6 @@ bool CTradingOperationsSimple::HasOpenPosition()
 {
     int totalPositions = PositionsTotal();
     
-    if(m_debugMode && totalPositions > 0)
-    {
-        Print("DEBUG TradingOps: Total positions: ", totalPositions);
-    }
-    
     for(int i = 0; i < totalPositions; i++)
     {
         ulong ticket = PositionGetTicket(i);
@@ -243,25 +172,8 @@ bool CTradingOperationsSimple::HasOpenPosition()
         string symbol = PositionGetString(POSITION_SYMBOL);
         long magic = PositionGetInteger(POSITION_MAGIC);
         
-        if(m_debugMode)
-        {
-            Print("DEBUG TradingOps: Checking position #", ticket, 
-                  " Symbol: ", symbol, 
-                  " Magic: ", magic);
-        }
-        
         if(symbol == m_symbol && magic == m_magicNumber)
         {
-            if(m_debugMode)
-            {
-                double volume = PositionGetDouble(POSITION_VOLUME);
-                double price = PositionGetDouble(POSITION_PRICE_OPEN);
-                long type = PositionGetInteger(POSITION_TYPE);
-                Print("DEBUG TradingOps: Found matching position #", ticket, 
-                      " Type: ", type, 
-                      " Volume: ", volume, 
-                      " Price: ", price);
-            }
             return true;
         }
     }
