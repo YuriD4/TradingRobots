@@ -21,6 +21,7 @@ private:
     double            m_lotScalingFactor;      // Коэффициент увеличения лота при развороте
     int               m_tradingStartHour;      // Начало торговли (часы)
     int               m_tradingEndHour;        // Окончание торговли (часы)
+    int               m_forceCloseHour;        // Час принудительного закрытия позиций (по серверному времени)
     bool              m_debugMode;             // Режим отладки
     bool              m_reverseOnBreakeven;    // Разворачиваться ли при закрытии по безубытку
     int               m_maxBreakoutReturnHours; // Максимальное время между пробоем и возвратом (часы)
@@ -37,6 +38,7 @@ public:
         double lotScalingFactor = 1.0,
         int tradingStartHour = 0,
         int tradingEndHour = 23,
+        int forceCloseHour = 20,
         bool debugMode = true,
         bool reverseOnBreakeven = true,
         int maxBreakoutReturnHours = 3
@@ -52,6 +54,7 @@ public:
     double            LotScalingFactor() const { return m_lotScalingFactor; }
     int               TradingStartHour() const { return m_tradingStartHour; }
     int               TradingEndHour() const { return m_tradingEndHour; }
+    int               ForceCloseHour() const { return m_forceCloseHour; }
     bool              DebugMode() const { return m_debugMode; }
     bool              ReverseOnBreakeven() const { return m_reverseOnBreakeven; }
     int               MaxBreakoutReturnHours() const { return m_maxBreakoutReturnHours; }
@@ -70,6 +73,7 @@ CTrendChangeSimpleConfig::CTrendChangeSimpleConfig(
     double lotScalingFactor,
     int tradingStartHour,
     int tradingEndHour,
+    int forceCloseHour,
     bool debugMode,
     bool reverseOnBreakeven,
     int maxBreakoutReturnHours
@@ -84,6 +88,7 @@ CTrendChangeSimpleConfig::CTrendChangeSimpleConfig(
     m_lotScalingFactor = lotScalingFactor;
     m_tradingStartHour = tradingStartHour;
     m_tradingEndHour = tradingEndHour;
+    m_forceCloseHour = forceCloseHour;
     m_debugMode = debugMode;
     m_reverseOnBreakeven = reverseOnBreakeven;
     m_maxBreakoutReturnHours = maxBreakoutReturnHours;

@@ -24,6 +24,7 @@ input int      InpMaxReversals = 3;              // Максимальное к�
 input double   InpLotScalingFactor = 1.0;        // Коэффициент увеличения лота при развороте
 input int      InpTradingStartHour = 0;          // Начало торговли (часы)
 input int      InpTradingEndHour = 23;           // Окончание торговли (часы)
+input int      InpForceCloseHour = 20;           // Час принудительного закрытия позиций (по серверному времени)
 input bool     InpDebugMode = true;              // Режим отладки
 input bool     InpReverseOnBreakeven = true;     // Разворачиваться ли при закрытии по безубытку
 input int      InpMaxBreakoutReturnHours = 3;    // Максимальное время между пробоем и возвратом (часы)
@@ -47,6 +48,7 @@ enum SYSTEM_STATE
 SYSTEM_STATE                   systemState = STATE_LOOKING_FOR_SIGNAL;
 datetime                       lastBarTime = 0;
 datetime                       lastBlockedDay = 0;
+datetime                       lastForceCloseDay = 0;
 bool                          trailingStopActivated = false;
 
 // Переменные для отслеживания пробоев диапазона
@@ -81,6 +83,7 @@ int OnInit()
         InpLotScalingFactor,
         InpTradingStartHour,
         InpTradingEndHour,
+        InpForceCloseHour,
         InpDebugMode,
         InpReverseOnBreakeven,
         InpMaxBreakoutReturnHours
@@ -194,6 +197,9 @@ void OnTick()
             return;
         }
     }
+    
+    // Проверяем необходимость принудительного закрытия позиций
+    CheckForceCloseTime();
     
     // Основная логика в зависимости от состояния системы
     switch(systemState)
@@ -391,6 +397,7 @@ void ProcessClosedPosition()
         currentLotSize = config.LotSize();
         lastTradeDirection = WRONG_VALUE;
         trailingStopActivated = false;
+        ResetForceCloseDay(); // Сбрасываем день принудительного закрытия
     }
     else if(isStopLoss || (isBreakeven && config.ReverseOnBreakeven()))
     {
@@ -415,6 +422,7 @@ void ProcessClosedPosition()
             currentLotSize = config.LotSize();
             lastTradeDirection = WRONG_VALUE;
             trailingStopActivated = false;
+            ResetForceCloseDay(); // Сбрасываем день принудительного закрытия
         }
     }
     else
@@ -632,6 +640,7 @@ void CheckNewDay()
     {
         Print("DEBUG: Checking day change. Current day: ", currentDay, 
               ", Last blocked day: ", lastBlockedDay,
+              ", Last force close day: ", lastForceCloseDay,
               ", State: ", EnumToString(systemState));
     }
     
@@ -643,6 +652,7 @@ void CheckNewDay()
         systemState = STATE_LOOKING_FOR_SIGNAL;
         ResetSystem();
         ResetBreakoutFlags();
+        ResetForceCloseDay(); // Сбрасываем день принудительного закрытия
     }
     else if(systemState == STATE_BLOCKED_UNTIL_TOMORROW && currentDay == lastBlockedDay)
     {
@@ -667,6 +677,17 @@ void ResetSystem()
 }
 
 //+------------------------------------------------------------------+
+//| Функция сброса дня принудительного закрытия                      |
+//+------------------------------------------------------------------+
+void ResetForceCloseDay()
+{
+    lastForceCloseDay = 0;
+    
+    if(config.DebugMode())
+        Print("DEBUG: Force close day reset");
+}
+
+//+------------------------------------------------------------------+
 //| Функция сброса флагов пробоев                                    |
 //+------------------------------------------------------------------+
 void ResetBreakoutFlags()
@@ -681,5 +702,59 @@ void ResetBreakoutFlags()
     if(config.DebugMode())
         Print("DEBUG: Breakout flags reset. Up: ", upBreakoutDetected ? "YES" : "NO",
               ", Down: ", downBreakoutDetected ? "YES" : "NO");
+}
+
+//+------------------------------------------------------------------+
+//| Функция проверки времени принудительного закрытия позиций       |
+//+------------------------------------------------------------------+
+void CheckForceCloseTime()
+{
+    // Получаем текущее время
+    datetime currentTime = TimeCurrent();
+    MqlDateTime currentDT;
+    TimeToStruct(currentTime, currentDT);
+    
+    // Получаем текущий день
+    datetime currentDay = iTime(_Symbol, PERIOD_D1, 0);
+    
+    // Проверяем, не выполняли ли мы уже закрытие сегодня
+    if(lastForceCloseDay == currentDay)
+    {
+        return; // Уже выполняли закрытие сегодня
+    }
+    
+    // Проверяем, наступил ли час принудительного закрытия
+    if(currentDT.hour == config.ForceCloseHour())
+    {
+        // Проверяем, есть ли открытые позиции
+        if(tradingOps.HasOpenPosition())
+        {
+            if(config.DebugMode())
+                Print("DEBUG: Force closing all positions at ", TimeToString(currentTime));
+                
+            // Закрываем все позиции
+            tradingOps.CloseAllPositions();
+            
+            // Обновляем состояние системы
+            systemState = STATE_BLOCKED_UNTIL_TOMORROW;
+            lastBlockedDay = currentDay;
+            lastForceCloseDay = currentDay;
+            
+            // Сбрасываем параметры
+            ResetSystem();
+            ResetBreakoutFlags();
+            
+            if(config.DebugMode())
+                Print("DEBUG: All positions closed and system blocked until tomorrow");
+        }
+        else
+        {
+            // Нет открытых позиций, но помечаем день, чтобы не проверять снова
+            lastForceCloseDay = currentDay;
+            
+            if(config.DebugMode())
+                Print("DEBUG: No open positions to close at force close time");
+        }
+    }
 }
 //+------------------------------------------------------------------+

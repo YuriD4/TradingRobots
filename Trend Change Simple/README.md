@@ -15,6 +15,7 @@ Trend Change Simple is a simplified version of the Trend Change trading robot fo
 5. **Trailing Stop**: When profit reaches the stop loss distance, the stop loss is moved to breakeven
 6. **Reversal System**: If a trade closes at a loss, the robot can reverse and open the opposite trade (configurable)
 7. **Range Blocking**: If a trade closes at take profit, the range is blocked for the rest of the day (no more trades until next day's range)
+8. **Force Close**: All open positions are closed at a configurable hour (default: 20:00 server time)
 
 ### Trading Conditions
 
@@ -68,6 +69,7 @@ The robot can be configured through the following input parameters:
 ### Time Settings
 - **`InpTradingStartHour`** - Start of trading hours (default: 0)
 - **`InpTradingEndHour`** - End of trading hours (default: 23)
+- **`InpForceCloseHour`** - Hour to force close all positions (server time, default: 20)
 
 ## Installation
 
