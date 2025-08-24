@@ -263,19 +263,39 @@ void ProcessSignalSearch()
         {
             int secondsPassed = (int)(currentTime - downBreakoutTime);
             int hoursPassed = secondsPassed / 3600;
+            int minutesPassed = secondsPassed / 60;
             
             if(config.DebugMode())
-                Print("DEBUG: DOWN breakout time check - seconds: ", secondsPassed, ", hours: ", hoursPassed, 
-                      ", max hours: ", config.MaxBreakoutReturnHours());
+            {
+                Print("DEBUG: DOWN breakout time check:");
+                Print("DEBUG:   Current time: ", TimeToString(currentTime));
+                Print("DEBUG:   Breakout time: ", TimeToString(downBreakoutTime));
+                Print("DEBUG:   Seconds passed: ", secondsPassed);
+                Print("DEBUG:   Minutes passed: ", minutesPassed);
+                Print("DEBUG:   Hours passed: ", hoursPassed);
+                Print("DEBUG:   Max hours allowed: ", config.MaxBreakoutReturnHours());
+            }
                       
             if(hoursPassed > config.MaxBreakoutReturnHours())
             {
                 if(config.DebugMode())
-                    Print("DEBUG: DOWN breakout expired - time elapsed (", hoursPassed, " hours) exceeds maximum (", config.MaxBreakoutReturnHours(), " hours)");
+                {
+                    Print("DEBUG: DOWN breakout EXPIRED:");
+                    Print("DEBUG:   Time elapsed (", hoursPassed, " hours) exceeds maximum (", config.MaxBreakoutReturnHours(), " hours)");
+                    Print("DEBUG:   Resetting DOWN breakout flag");
+                }
                 // Сбрасываем флаг пробоя, так как время истекло
                 downBreakoutDetected = false;
                 downBreakoutPrice = 0.0;
                 downBreakoutTime = 0;
+            }
+            else
+            {
+                if(config.DebugMode())
+                {
+                    Print("DEBUG: DOWN breakout still VALID:");
+                    Print("DEBUG:   Time elapsed (", hoursPassed, " hours) is within limit (", config.MaxBreakoutReturnHours(), " hours)");
+                }
             }
         }
     }
@@ -296,19 +316,39 @@ void ProcessSignalSearch()
         {
             int secondsPassed = (int)(currentTime - upBreakoutTime);
             int hoursPassed = secondsPassed / 3600;
+            int minutesPassed = secondsPassed / 60;
             
             if(config.DebugMode())
-                Print("DEBUG: UP breakout time check - seconds: ", secondsPassed, ", hours: ", hoursPassed, 
-                      ", max hours: ", config.MaxBreakoutReturnHours());
+            {
+                Print("DEBUG: UP breakout time check:");
+                Print("DEBUG:   Current time: ", TimeToString(currentTime));
+                Print("DEBUG:   Breakout time: ", TimeToString(upBreakoutTime));
+                Print("DEBUG:   Seconds passed: ", secondsPassed);
+                Print("DEBUG:   Minutes passed: ", minutesPassed);
+                Print("DEBUG:   Hours passed: ", hoursPassed);
+                Print("DEBUG:   Max hours allowed: ", config.MaxBreakoutReturnHours());
+            }
                       
             if(hoursPassed > config.MaxBreakoutReturnHours())
             {
                 if(config.DebugMode())
-                    Print("DEBUG: UP breakout expired - time elapsed (", hoursPassed, " hours) exceeds maximum (", config.MaxBreakoutReturnHours(), " hours)");
+                {
+                    Print("DEBUG: UP breakout EXPIRED:");
+                    Print("DEBUG:   Time elapsed (", hoursPassed, " hours) exceeds maximum (", config.MaxBreakoutReturnHours(), " hours)");
+                    Print("DEBUG:   Resetting UP breakout flag");
+                }
                 // Сбрасываем флаг пробоя, так как время истекло
                 upBreakoutDetected = false;
                 upBreakoutPrice = 0.0;
                 upBreakoutTime = 0;
+            }
+            else
+            {
+                if(config.DebugMode())
+                {
+                    Print("DEBUG: UP breakout still VALID:");
+                    Print("DEBUG:   Time elapsed (", hoursPassed, " hours) is within limit (", config.MaxBreakoutReturnHours(), " hours)");
+                }
             }
         }
     }
@@ -321,12 +361,23 @@ void ProcessSignalSearch()
         downBreakoutTime = currentTime;
         
         if(config.DebugMode())
-            Print("DEBUG: DOWN breakout detected at ", currentPrice, " at time ", TimeToString(currentTime));
+        {
+            Print("DEBUG: DOWN breakout DETECTED:");
+            Print("DEBUG:   Price: ", currentPrice);
+            Print("DEBUG:   Time: ", TimeToString(currentTime));
+            Print("DEBUG:   Range low: ", rangeLow);
+            Print("DEBUG:   Breakout distance: ", breakoutDistance);
+            Print("DEBUG:   Threshold: ", (rangeLow - breakoutDistance));
+        }
     }
     else if(downBreakoutDetected && currentPrice < (rangeLow - breakoutDistance))
     {
         if(config.DebugMode())
-            Print("DEBUG: DOWN breakout already detected at ", downBreakoutPrice, " at time ", TimeToString(downBreakoutTime));
+        {
+            Print("DEBUG: DOWN breakout ALREADY detected:");
+            Print("DEBUG:   Previous price: ", downBreakoutPrice);
+            Print("DEBUG:   Previous time: ", TimeToString(downBreakoutTime));
+        }
     }
     
     // 2. Обнаружение пробоя ВВЕРХ  
@@ -337,12 +388,23 @@ void ProcessSignalSearch()
         upBreakoutTime = currentTime;
         
         if(config.DebugMode())
-            Print("DEBUG: UP breakout detected at ", currentPrice, " at time ", TimeToString(currentTime));
+        {
+            Print("DEBUG: UP breakout DETECTED:");
+            Print("DEBUG:   Price: ", currentPrice);
+            Print("DEBUG:   Time: ", TimeToString(currentTime));
+            Print("DEBUG:   Range high: ", rangeHigh);
+            Print("DEBUG:   Breakout distance: ", breakoutDistance);
+            Print("DEBUG:   Threshold: ", (rangeHigh + breakoutDistance));
+        }
     }
     else if(upBreakoutDetected && currentPrice > (rangeHigh + breakoutDistance))
     {
         if(config.DebugMode())
-            Print("DEBUG: UP breakout already detected at ", upBreakoutPrice, " at time ", TimeToString(upBreakoutTime));
+        {
+            Print("DEBUG: UP breakout ALREADY detected:");
+            Print("DEBUG:   Previous price: ", upBreakoutPrice);
+            Print("DEBUG:   Previous time: ", TimeToString(upBreakoutTime));
+        }
     }
     
     // 3. Возврат после пробоя ВНИЗ → сигнал BUY
