@@ -178,6 +178,11 @@ void OnTick()
     if(!utils.IsTradingTimeAllowed(config.TradingStartHour(), config.TradingEndHour()))
         return;
     
+    datetime currentTime = TimeCurrent();
+    
+    // Принудительно проверяем и сбрасываем просроченные флаги на каждом тике
+    ForceExpireBreakouts(currentTime);
+    
     // Проверяем новый бар
     datetime currentBarTime = iTime(_Symbol, _Period, 1);
     bool isNewBar = (currentBarTime != lastBarTime);
@@ -234,274 +239,132 @@ void ProcessSignalSearch()
     double onePoint = utils.PointsToPrice(1);
     datetime currentTime = TimeCurrent();
     
-    if(config.DebugMode())
-    {
-        Print("DEBUG: ProcessSignalSearch called at ", TimeToString(currentTime));
-        Print("DEBUG: Current price: ", currentPrice);
-        Print("DEBUG: Range high: ", rangeHigh, ", Range low: ", rangeLow);
-        Print("DEBUG: Breakout distance: ", breakoutDistance);
-        Print("DEBUG: DOWN breakout detected: ", downBreakoutDetected ? "YES" : "NO", 
-              ", time: ", downBreakoutTime > 0 ? TimeToString(downBreakoutTime) : "N/A");
-        Print("DEBUG: UP breakout detected: ", upBreakoutDetected ? "YES" : "NO", 
-              ", time: ", upBreakoutTime > 0 ? TimeToString(upBreakoutTime) : "N/A");
-    }
+    // Простая и понятная бизнес-логика:
+    // 1. Если цена внутри диапазона - сбрасываем все флаги
+    // 2. Если цена вышла ниже диапазона - запоминаем это
+    // 3. Если цена вышла выше диапазона - запоминаем это
+    // 4. Если был выход вниз и цена вернулась в диапазон - проверяем время и открываем BUY
+    // 5. Если был выход вверх и цена вернулась в диапазон - проверяем время и открываем SELL
     
-    // Проверяем, не истекло ли время с момента последнего пробоя
-    if(downBreakoutDetected)
+    // Если цена внутри диапазона, сбрасываем все флаги
+    if(currentPrice >= (rangeLow - breakoutDistance) && currentPrice <= (rangeHigh + breakoutDistance))
     {
-        // Проверяем корректность времени
-        if(currentTime < downBreakoutTime)
+        // Цена внутри диапазона (с учетом возможного небольшого отклонения)
+        // Это может быть начальное состояние или возврат после пробоя
+        if(downBreakoutDetected || upBreakoutDetected)
         {
             if(config.DebugMode())
-                Print("DEBUG: WARNING - Current time (", TimeToString(currentTime), ") is before breakout time (", TimeToString(downBreakoutTime), "). Resetting DOWN breakout flag.");
-            // Сбрасываем флаг пробоя, так как время некорректно
-            downBreakoutDetected = false;
-            downBreakoutPrice = 0.0;
-            downBreakoutTime = 0;
+                Print("DEBUG: Price is back in range, resetting breakout flags");
+            ResetBreakoutFlags();
         }
-        else
+        return;
+    }
+    
+    // 1. Обнаружение пробоя ВНИЗ (цена вышла ниже диапазона)
+    if(currentPrice < (rangeLow - breakoutDistance))
+    {
+        if(!downBreakoutDetected)
         {
-            int secondsPassed = (int)(currentTime - downBreakoutTime);
-            int hoursPassed = secondsPassed / 3600;
-            int minutesPassed = secondsPassed / 60;
+            // Фиксируем момент первого выхода вниз
+            downBreakoutDetected = true;
+            downBreakoutPrice = currentPrice;
+            downBreakoutTime = currentTime;
             
             if(config.DebugMode())
             {
-                Print("DEBUG: DOWN breakout time check:");
-                Print("DEBUG:   Current time: ", TimeToString(currentTime));
-                Print("DEBUG:   Breakout time: ", TimeToString(downBreakoutTime));
-                Print("DEBUG:   Seconds passed: ", secondsPassed);
-                Print("DEBUG:   Minutes passed: ", minutesPassed);
-                Print("DEBUG:   Hours passed: ", hoursPassed);
-                Print("DEBUG:   Max hours allowed: ", config.MaxBreakoutReturnHours());
-            }
-                      
-            if(hoursPassed > config.MaxBreakoutReturnHours())
-            {
-                if(config.DebugMode())
-                {
-                    Print("DEBUG: DOWN breakout EXPIRED:");
-                    Print("DEBUG:   Time elapsed (", hoursPassed, " hours) exceeds maximum (", config.MaxBreakoutReturnHours(), " hours)");
-                    Print("DEBUG:   Resetting DOWN breakout flag");
-                }
-                // Сбрасываем флаг пробоя, так как время истекло
-                downBreakoutDetected = false;
-                downBreakoutPrice = 0.0;
-                downBreakoutTime = 0;
-            }
-            else
-            {
-                if(config.DebugMode())
-                {
-                    Print("DEBUG: DOWN breakout still VALID:");
-                    Print("DEBUG:   Time elapsed (", hoursPassed, " hours) is within limit (", config.MaxBreakoutReturnHours(), " hours)");
-                }
+                Print("CRITICAL: DOWN breakout DETECTED at price ", currentPrice, " at time ", TimeToString(currentTime));
+                Print("CRITICAL: Range low: ", rangeLow, ", Breakout threshold: ", (rangeLow - breakoutDistance));
             }
         }
     }
     
-    if(upBreakoutDetected)
+    // 2. Обнаружение пробоя ВВЕРХ (цена вышла выше диапазона)
+    if(currentPrice > (rangeHigh + breakoutDistance))
     {
-        // Проверяем корректность времени
-        if(currentTime < upBreakoutTime)
+        if(!upBreakoutDetected)
         {
-            if(config.DebugMode())
-                Print("DEBUG: WARNING - Current time (", TimeToString(currentTime), ") is before breakout time (", TimeToString(upBreakoutTime), "). Resetting UP breakout flag.");
-            // Сбрасываем флаг пробоя, так как время некорректно
-            upBreakoutDetected = false;
-            upBreakoutPrice = 0.0;
-            upBreakoutTime = 0;
-        }
-        else
-        {
-            int secondsPassed = (int)(currentTime - upBreakoutTime);
-            int hoursPassed = secondsPassed / 3600;
-            int minutesPassed = secondsPassed / 60;
+            // Фиксируем момент первого выхода вверх
+            upBreakoutDetected = true;
+            upBreakoutPrice = currentPrice;
+            upBreakoutTime = currentTime;
             
             if(config.DebugMode())
             {
-                Print("DEBUG: UP breakout time check:");
-                Print("DEBUG:   Current time: ", TimeToString(currentTime));
-                Print("DEBUG:   Breakout time: ", TimeToString(upBreakoutTime));
-                Print("DEBUG:   Seconds passed: ", secondsPassed);
-                Print("DEBUG:   Minutes passed: ", minutesPassed);
-                Print("DEBUG:   Hours passed: ", hoursPassed);
-                Print("DEBUG:   Max hours allowed: ", config.MaxBreakoutReturnHours());
+                Print("CRITICAL: UP breakout DETECTED at price ", currentPrice, " at time ", TimeToString(currentTime));
+                Print("CRITICAL: Range high: ", rangeHigh, ", Breakout threshold: ", (rangeHigh + breakoutDistance));
             }
-                      
-            if(hoursPassed > config.MaxBreakoutReturnHours())
-            {
-                if(config.DebugMode())
-                {
-                    Print("DEBUG: UP breakout EXPIRED:");
-                    Print("DEBUG:   Time elapsed (", hoursPassed, " hours) exceeds maximum (", config.MaxBreakoutReturnHours(), " hours)");
-                    Print("DEBUG:   Resetting UP breakout flag");
-                }
-                // Сбрасываем флаг пробоя, так как время истекло
-                upBreakoutDetected = false;
-                upBreakoutPrice = 0.0;
-                upBreakoutTime = 0;
-            }
-            else
-            {
-                if(config.DebugMode())
-                {
-                    Print("DEBUG: UP breakout still VALID:");
-                    Print("DEBUG:   Time elapsed (", hoursPassed, " hours) is within limit (", config.MaxBreakoutReturnHours(), " hours)");
-                }
-            }
-        }
-    }
-    
-    // 1. Обнаружение пробоя ВНИЗ
-    if(!downBreakoutDetected && currentPrice < (rangeLow - breakoutDistance))
-    {
-        downBreakoutDetected = true;
-        downBreakoutPrice = currentPrice;
-        downBreakoutTime = currentTime;
-        
-        if(config.DebugMode())
-        {
-            Print("DEBUG: DOWN breakout DETECTED:");
-            Print("DEBUG:   Price: ", currentPrice);
-            Print("DEBUG:   Time: ", TimeToString(currentTime));
-            Print("DEBUG:   Range low: ", rangeLow);
-            Print("DEBUG:   Breakout distance: ", breakoutDistance);
-            Print("DEBUG:   Threshold: ", (rangeLow - breakoutDistance));
-        }
-    }
-    else if(downBreakoutDetected && currentPrice < (rangeLow - breakoutDistance))
-    {
-        if(config.DebugMode())
-        {
-            Print("DEBUG: DOWN breakout ALREADY detected:");
-            Print("DEBUG:   Previous price: ", downBreakoutPrice);
-            Print("DEBUG:   Previous time: ", TimeToString(downBreakoutTime));
-        }
-    }
-    
-    // 2. Обнаружение пробоя ВВЕРХ  
-    if(!upBreakoutDetected && currentPrice > (rangeHigh + breakoutDistance))
-    {
-        upBreakoutDetected = true;
-        upBreakoutPrice = currentPrice;
-        upBreakoutTime = currentTime;
-        
-        if(config.DebugMode())
-        {
-            Print("DEBUG: UP breakout DETECTED:");
-            Print("DEBUG:   Price: ", currentPrice);
-            Print("DEBUG:   Time: ", TimeToString(currentTime));
-            Print("DEBUG:   Range high: ", rangeHigh);
-            Print("DEBUG:   Breakout distance: ", breakoutDistance);
-            Print("DEBUG:   Threshold: ", (rangeHigh + breakoutDistance));
-        }
-    }
-    else if(upBreakoutDetected && currentPrice > (rangeHigh + breakoutDistance))
-    {
-        if(config.DebugMode())
-        {
-            Print("DEBUG: UP breakout ALREADY detected:");
-            Print("DEBUG:   Previous price: ", upBreakoutPrice);
-            Print("DEBUG:   Previous time: ", TimeToString(upBreakoutTime));
         }
     }
     
     // 3. Возврат после пробоя ВНИЗ → сигнал BUY
-    if(downBreakoutDetected)
+    if(downBreakoutDetected && currentPrice >= (rangeLow + onePoint))
     {
+        // Цена вернулась в диапазон снизу
+        int secondsPassed = (int)(currentTime - downBreakoutTime);
+        int hoursPassed = secondsPassed / 3600;
+        
         if(config.DebugMode())
-            Print("DEBUG: Checking DOWN breakout return condition - current price: ", currentPrice, 
-                  ", threshold: ", (rangeLow + onePoint));
-                  
-        if(currentPrice >= (rangeLow + onePoint))
         {
-            // Проверяем корректность времени
-            if(currentTime < downBreakoutTime)
-            {
-                if(config.DebugMode())
-                    Print("DEBUG: WARNING - Current time (", TimeToString(currentTime), ") is before breakout time (", TimeToString(downBreakoutTime), "). Resetting DOWN breakout flag.");
-                // Сбрасываем флаг пробоя, так как время некорректно
-                downBreakoutDetected = false;
-                downBreakoutPrice = 0.0;
-                downBreakoutTime = 0;
-            }
-            else
-            {
-                // Проверяем, не превышает ли время между пробоем и возвратом максимальное значение
-                int secondsPassed = (int)(currentTime - downBreakoutTime);
-                int hoursPassed = secondsPassed / 3600;
+            Print("CRITICAL: Return after DOWN breakout detected");
+            Print("CRITICAL: Time elapsed: ", hoursPassed, " hours (max allowed: ", config.MaxBreakoutReturnHours(), " hours)");
+        }
+        
+        // Проверяем, что время возврата в пределах допустимого
+        if(hoursPassed <= config.MaxBreakoutReturnHours())
+        {
+            if(config.DebugMode())
+                Print("CRITICAL: Opening BUY position - valid breakout-return pattern");
                 
-                if(config.DebugMode())
-                    Print("DEBUG: Return after DOWN breakout → Opening BUY (time elapsed: ", hoursPassed, " hours)");
-                    
-                // Только если время в пределах допустимого, открываем позицию
-                if(hoursPassed <= config.MaxBreakoutReturnHours())
-                {
-                    OpenBuyPosition();
-                    ResetBreakoutFlags();
-                    systemState = STATE_POSITION_OPEN;
-                    return; // Важно: выходим после открытия позиции
-                }
-                else
-                {
-                    if(config.DebugMode())
-                        Print("DEBUG: DOWN breakout return ignored - time elapsed (", hoursPassed, " hours) exceeds maximum (", config.MaxBreakoutReturnHours(), " hours)");
-                    // Сбрасываем флаг пробоя, так как время истекло
-                    downBreakoutDetected = false;
-                    downBreakoutPrice = 0.0;
-                    downBreakoutTime = 0;
-                }
-            }
+            OpenBuyPosition();
+            ResetBreakoutFlags();
+            systemState = STATE_POSITION_OPEN;
+            return;
+        }
+        else
+        {
+            // Время истекло, сбрасываем флаг
+            if(config.DebugMode())
+                Print("CRITICAL: DOWN breakout return ignored - time expired (", hoursPassed, " hours > ", config.MaxBreakoutReturnHours(), " hours)");
+                
+            downBreakoutDetected = false;
+            downBreakoutPrice = 0.0;
+            downBreakoutTime = 0;
         }
     }
     
     // 4. Возврат после пробоя ВВЕРХ → сигнал SELL
-    if(upBreakoutDetected)
+    if(upBreakoutDetected && currentPrice <= (rangeHigh - onePoint))
     {
+        // Цена вернулась в диапазон сверху
+        int secondsPassed = (int)(currentTime - upBreakoutTime);
+        int hoursPassed = secondsPassed / 3600;
+        
         if(config.DebugMode())
-            Print("DEBUG: Checking UP breakout return condition - current price: ", currentPrice, 
-                  ", threshold: ", (rangeHigh - onePoint));
-                  
-        if(currentPrice <= (rangeHigh - onePoint))
         {
-            // Проверяем корректность времени
-            if(currentTime < upBreakoutTime)
-            {
-                if(config.DebugMode())
-                    Print("DEBUG: WARNING - Current time (", TimeToString(currentTime), ") is before breakout time (", TimeToString(upBreakoutTime), "). Resetting UP breakout flag.");
-                // Сбрасываем флаг пробоя, так как время некорректно
-                upBreakoutDetected = false;
-                upBreakoutPrice = 0.0;
-                upBreakoutTime = 0;
-            }
-            else
-            {
-                // Проверяем, не превышает ли время между пробоем и возвратом максимальное значение
-                int secondsPassed = (int)(currentTime - upBreakoutTime);
-                int hoursPassed = secondsPassed / 3600;
+            Print("CRITICAL: Return after UP breakout detected");
+            Print("CRITICAL: Time elapsed: ", hoursPassed, " hours (max allowed: ", config.MaxBreakoutReturnHours(), " hours)");
+        }
+        
+        // Проверяем, что время возврата в пределах допустимого
+        if(hoursPassed <= config.MaxBreakoutReturnHours())
+        {
+            if(config.DebugMode())
+                Print("CRITICAL: Opening SELL position - valid breakout-return pattern");
                 
-                if(config.DebugMode())
-                    Print("DEBUG: Return after UP breakout → Opening SELL (time elapsed: ", hoursPassed, " hours)");
-                    
-                // Только если время в пределах допустимого, открываем позицию
-                if(hoursPassed <= config.MaxBreakoutReturnHours())
-                {
-                    OpenSellPosition();
-                    ResetBreakoutFlags();
-                    systemState = STATE_POSITION_OPEN;
-                    return; // Важно: выходим после открытия позиции
-                }
-                else
-                {
-                    if(config.DebugMode())
-                        Print("DEBUG: UP breakout return ignored - time elapsed (", hoursPassed, " hours) exceeds maximum (", config.MaxBreakoutReturnHours(), " hours)");
-                    // Сбрасываем флаг пробоя, так как время истекло
-                    upBreakoutDetected = false;
-                    upBreakoutPrice = 0.0;
-                    upBreakoutTime = 0;
-                }
-            }
+            OpenSellPosition();
+            ResetBreakoutFlags();
+            systemState = STATE_POSITION_OPEN;
+            return;
+        }
+        else
+        {
+            // Время истекло, сбрасываем флаг
+            if(config.DebugMode())
+                Print("CRITICAL: UP breakout return ignored - time expired (", hoursPassed, " hours > ", config.MaxBreakoutReturnHours(), " hours)");
+                
+            upBreakoutDetected = false;
+            upBreakoutPrice = 0.0;
+            upBreakoutTime = 0;
         }
     }
 }
@@ -916,6 +779,63 @@ void ResetBreakoutFlags()
     if(config.DebugMode())
         Print("DEBUG: Breakout flags reset. Up: ", upBreakoutDetected ? "YES" : "NO",
               ", Down: ", downBreakoutDetected ? "YES" : "NO");
+}
+
+//+------------------------------------------------------------------+
+//| Функция принудительной проверки и сброса просроченных флагов     |
+//+------------------------------------------------------------------+
+void ForceExpireBreakouts(datetime currentTime)
+{
+    // Простая проверка: если с момента пробоя прошло больше 3 часов, сбрасываем флаги
+    if(downBreakoutDetected)
+    {
+        if(currentTime >= downBreakoutTime)
+        {
+            int hoursPassed = (int)(currentTime - downBreakoutTime) / 3600;
+            if(hoursPassed > config.MaxBreakoutReturnHours())
+            {
+                if(config.DebugMode())
+                    Print("CRITICAL: DOWN breakout expired after ", hoursPassed, " hours");
+                downBreakoutDetected = false;
+                downBreakoutPrice = 0.0;
+                downBreakoutTime = 0;
+            }
+        }
+        else
+        {
+            // Время некорректно, сбрасываем флаг
+            if(config.DebugMode())
+                Print("CRITICAL: Time inconsistency detected for DOWN breakout, resetting flag");
+            downBreakoutDetected = false;
+            downBreakoutPrice = 0.0;
+            downBreakoutTime = 0;
+        }
+    }
+    
+    if(upBreakoutDetected)
+    {
+        if(currentTime >= upBreakoutTime)
+        {
+            int hoursPassed = (int)(currentTime - upBreakoutTime) / 3600;
+            if(hoursPassed > config.MaxBreakoutReturnHours())
+            {
+                if(config.DebugMode())
+                    Print("CRITICAL: UP breakout expired after ", hoursPassed, " hours");
+                upBreakoutDetected = false;
+                upBreakoutPrice = 0.0;
+                upBreakoutTime = 0;
+            }
+        }
+        else
+        {
+            // Время некорректно, сбрасываем флаг
+            if(config.DebugMode())
+                Print("CRITICAL: Time inconsistency detected for UP breakout, resetting flag");
+            upBreakoutDetected = false;
+            upBreakoutPrice = 0.0;
+            upBreakoutTime = 0;
+        }
+    }
 }
 
 //+------------------------------------------------------------------+

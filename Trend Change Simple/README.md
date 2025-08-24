@@ -9,13 +9,15 @@ Trend Change Simple is a simplified version of the Trend Change trading robot fo
 ### Basic Trading Logic
 
 1. **Range Detection**: The robot identifies the price range from the previous day between 16:00 and 00:00 (server time)
-2. **False Breakout Detection**: The robot waits for price to break out of this range by a configurable number of points
-3. **Return Signal**: When price returns back into the range (1 point above the lower boundary for buy signals, or 1 point below the upper boundary for sell signals) within a configurable time frame, the robot opens a position
-4. **Stop Loss & Take Profit**: Fixed stop loss and take profit levels based on configuration
-5. **Trailing Stop**: When profit reaches the stop loss distance, the stop loss is moved to breakeven
-6. **Reversal System**: If a trade closes at a loss, the robot can reverse and open the opposite trade (configurable)
-7. **Range Blocking**: If a trade closes at take profit, the range is blocked for the rest of the day (no more trades until next day's range)
-8. **Force Close**: All open positions are closed at a configurable hour (default: 20:00 server time)
+2. **Breakout Detection**: The robot waits for price to break out of this range by a configurable number of points
+3. **Return Validation**: After a breakout, the robot waits for price to return into the range (1 point above the lower boundary for buy signals, or 1 point below the upper boundary for sell signals)
+4. **Time Constraint**: The return must happen within a configurable time frame (default: 3 hours) after the initial breakout
+5. **Position Opening**: If breakout and return occur within the time constraint, the robot opens a counter-trend position
+6. **Stop Loss & Take Profit**: Fixed stop loss and take profit levels based on configuration
+7. **Trailing Stop**: When profit reaches the stop loss distance, the stop loss is moved to breakeven
+8. **Reversal System**: If a trade closes at a loss, the robot can reverse and open the opposite trade (configurable)
+9. **Range Blocking**: If a trade closes at take profit, the range is blocked for the rest of the day (no more trades until next day's range)
+10. **Force Close**: All open positions are closed at a configurable hour (default: 20:00 server time)
 
 ### Trading Conditions
 
