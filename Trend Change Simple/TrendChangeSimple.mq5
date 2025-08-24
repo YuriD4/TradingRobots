@@ -700,12 +700,24 @@ void CheckNewDay()
     if(systemState == STATE_BLOCKED_UNTIL_TOMORROW && currentDay > lastBlockedDay)
     {
         if(config.DebugMode())
+        {
             Print("DEBUG: *** NEW DAY *** → System unblocked");
+            Print("DEBUG: Breakout flags status before reset:");
+            Print("DEBUG:   DOWN breakout detected: ", downBreakoutDetected ? "YES" : "NO");
+            Print("DEBUG:   UP breakout detected: ", upBreakoutDetected ? "YES" : "NO");
+        }
             
         systemState = STATE_LOOKING_FOR_SIGNAL;
         ResetSystem();
         ResetBreakoutFlags();
         ResetForceCloseDay(); // Сбрасываем день принудительного закрытия
+        
+        if(config.DebugMode())
+        {
+            Print("DEBUG: Breakout flags status after reset:");
+            Print("DEBUG:   DOWN breakout detected: ", downBreakoutDetected ? "YES" : "NO");
+            Print("DEBUG:   UP breakout detected: ", upBreakoutDetected ? "YES" : "NO");
+        }
     }
     else if(systemState == STATE_BLOCKED_UNTIL_TOMORROW && currentDay == lastBlockedDay)
     {
@@ -745,6 +757,15 @@ void ResetForceCloseDay()
 //+------------------------------------------------------------------+
 void ResetBreakoutFlags()
 {
+    if(config.DebugMode())
+    {
+        Print("DEBUG: Resetting breakout flags");
+        Print("DEBUG:   Before reset - DOWN breakout detected: ", downBreakoutDetected ? "YES" : "NO", 
+              ", time: ", downBreakoutTime > 0 ? TimeToString(downBreakoutTime) : "N/A");
+        Print("DEBUG:   Before reset - UP breakout detected: ", upBreakoutDetected ? "YES" : "NO", 
+              ", time: ", upBreakoutTime > 0 ? TimeToString(upBreakoutTime) : "N/A");
+    }
+    
     upBreakoutDetected = false;
     downBreakoutDetected = false;
     upBreakoutPrice = 0.0;
