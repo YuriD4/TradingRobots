@@ -289,6 +289,7 @@ void ProcessSignalSearch()
     wasPriceInRange = isPriceInRange;
     
     // 1. Обнаружение пробоя ВНИЗ (цена вышла из диапазона вниз)
+    // Пробой регистрируется только если цена была в диапазоне и вышла вниз
     if(!downBreakoutDetected && exitedRangeDown)
     {
         // Фиксируем момент первого выхода вниз
@@ -298,9 +299,13 @@ void ProcessSignalSearch()
         
         Print("CRITICAL: DOWN breakout DETECTED at price ", currentPrice, " at time ", TimeToString(currentTime));
         Print("CRITICAL: Range low: ", rangeLow, ", Breakout threshold: ", (rangeLow - breakoutDistance));
+        Print("CRITICAL: Previous state - In range: ", wasPriceInRange ? "YES" : "NO", 
+              ", Above range: ", wasPriceAboveRange ? "YES" : "NO", 
+              ", Below range: ", wasPriceBelowRange ? "YES" : "NO");
     }
     
     // 2. Обнаружение пробоя ВВЕРХ (цена вышла из диапазона вверх)
+    // Пробой регистрируется только если цена была в диапазоне и вышла вверх
     if(!upBreakoutDetected && exitedRangeUp)
     {
         // Фиксируем момент первого выхода вверх
@@ -310,6 +315,9 @@ void ProcessSignalSearch()
         
         Print("CRITICAL: UP breakout DETECTED at price ", currentPrice, " at time ", TimeToString(currentTime));
         Print("CRITICAL: Range high: ", rangeHigh, ", Breakout threshold: ", (rangeHigh + breakoutDistance));
+        Print("CRITICAL: Previous state - In range: ", wasPriceInRange ? "YES" : "NO", 
+              ", Above range: ", wasPriceAboveRange ? "YES" : "NO", 
+              ", Below range: ", wasPriceBelowRange ? "YES" : "NO");
     }
     
     // 3. Возврат после пробоя ВНИЗ → сигнал BUY
@@ -812,6 +820,16 @@ void ResetBreakoutFlags()
 //+------------------------------------------------------------------+
 void ForceExpireBreakouts(datetime currentTime)
 {
+    // Получаем текущее состояние цены для отладки
+    double currentPrice = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+    double rangeHigh = rangeManager.GetRangeHigh();
+    double rangeLow = rangeManager.GetRangeLow();
+    double breakoutDistance = utils.PointsToPrice(config.BreakoutPoints());
+    
+    bool isPriceAboveRange = (currentPrice > (rangeHigh + breakoutDistance));
+    bool isPriceBelowRange = (currentPrice < (rangeLow - breakoutDistance));
+    bool isPriceInRange = (!isPriceAboveRange && !isPriceBelowRange);
+    
     // Простая проверка: если с момента пробоя прошло больше 3 часов, сбрасываем флаги
     bool downExpired = false;
     bool upExpired = false;
@@ -824,6 +842,10 @@ void ForceExpireBreakouts(datetime currentTime)
             if(hoursPassed > config.MaxBreakoutReturnHours())
             {
                 Print("CRITICAL: DOWN breakout EXPIRED after ", hoursPassed, " hours (max ", config.MaxBreakoutReturnHours(), " hours)");
+                Print("CRITICAL: Current price state - In range: ", isPriceInRange ? "YES" : "NO", 
+                      ", Above range: ", isPriceAboveRange ? "YES" : "NO", 
+                      ", Below range: ", isPriceBelowRange ? "YES" : "NO");
+                Print("CRITICAL: Current price: ", currentPrice, ", Range low: ", rangeLow, ", Breakout threshold: ", (rangeLow - breakoutDistance));
                 downExpired = true;
             }
         }
@@ -843,6 +865,10 @@ void ForceExpireBreakouts(datetime currentTime)
             if(hoursPassed > config.MaxBreakoutReturnHours())
             {
                 Print("CRITICAL: UP breakout EXPIRED after ", hoursPassed, " hours (max ", config.MaxBreakoutReturnHours(), " hours)");
+                Print("CRITICAL: Current price state - In range: ", isPriceInRange ? "YES" : "NO", 
+                      ", Above range: ", isPriceAboveRange ? "YES" : "NO", 
+                      ", Below range: ", isPriceBelowRange ? "YES" : "NO");
+                Print("CRITICAL: Current price: ", currentPrice, ", Range high: ", rangeHigh, ", Breakout threshold: ", (rangeHigh + breakoutDistance));
                 upExpired = true;
             }
         }
