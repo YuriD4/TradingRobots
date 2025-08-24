@@ -249,41 +249,67 @@ void ProcessSignalSearch()
     // Проверяем, не истекло ли время с момента последнего пробоя
     if(downBreakoutDetected)
     {
-        int secondsPassed = (int)(currentTime - downBreakoutTime);
-        int hoursPassed = secondsPassed / 3600;
-        
-        if(config.DebugMode())
-            Print("DEBUG: DOWN breakout time check - seconds: ", secondsPassed, ", hours: ", hoursPassed, 
-                  ", max hours: ", config.MaxBreakoutReturnHours());
-                  
-        if(hoursPassed > config.MaxBreakoutReturnHours())
+        // Проверяем корректность времени
+        if(currentTime < downBreakoutTime)
         {
             if(config.DebugMode())
-                Print("DEBUG: DOWN breakout expired - time elapsed (", hoursPassed, " hours) exceeds maximum (", config.MaxBreakoutReturnHours(), " hours)");
-            // Сбрасываем флаг пробоя, так как время истекло
+                Print("DEBUG: WARNING - Current time (", TimeToString(currentTime), ") is before breakout time (", TimeToString(downBreakoutTime), "). Resetting DOWN breakout flag.");
+            // Сбрасываем флаг пробоя, так как время некорректно
             downBreakoutDetected = false;
             downBreakoutPrice = 0.0;
             downBreakoutTime = 0;
+        }
+        else
+        {
+            int secondsPassed = (int)(currentTime - downBreakoutTime);
+            int hoursPassed = secondsPassed / 3600;
+            
+            if(config.DebugMode())
+                Print("DEBUG: DOWN breakout time check - seconds: ", secondsPassed, ", hours: ", hoursPassed, 
+                      ", max hours: ", config.MaxBreakoutReturnHours());
+                      
+            if(hoursPassed > config.MaxBreakoutReturnHours())
+            {
+                if(config.DebugMode())
+                    Print("DEBUG: DOWN breakout expired - time elapsed (", hoursPassed, " hours) exceeds maximum (", config.MaxBreakoutReturnHours(), " hours)");
+                // Сбрасываем флаг пробоя, так как время истекло
+                downBreakoutDetected = false;
+                downBreakoutPrice = 0.0;
+                downBreakoutTime = 0;
+            }
         }
     }
     
     if(upBreakoutDetected)
     {
-        int secondsPassed = (int)(currentTime - upBreakoutTime);
-        int hoursPassed = secondsPassed / 3600;
-        
-        if(config.DebugMode())
-            Print("DEBUG: UP breakout time check - seconds: ", secondsPassed, ", hours: ", hoursPassed, 
-                  ", max hours: ", config.MaxBreakoutReturnHours());
-                  
-        if(hoursPassed > config.MaxBreakoutReturnHours())
+        // Проверяем корректность времени
+        if(currentTime < upBreakoutTime)
         {
             if(config.DebugMode())
-                Print("DEBUG: UP breakout expired - time elapsed (", hoursPassed, " hours) exceeds maximum (", config.MaxBreakoutReturnHours(), " hours)");
-            // Сбрасываем флаг пробоя, так как время истекло
+                Print("DEBUG: WARNING - Current time (", TimeToString(currentTime), ") is before breakout time (", TimeToString(upBreakoutTime), "). Resetting UP breakout flag.");
+            // Сбрасываем флаг пробоя, так как время некорректно
             upBreakoutDetected = false;
             upBreakoutPrice = 0.0;
             upBreakoutTime = 0;
+        }
+        else
+        {
+            int secondsPassed = (int)(currentTime - upBreakoutTime);
+            int hoursPassed = secondsPassed / 3600;
+            
+            if(config.DebugMode())
+                Print("DEBUG: UP breakout time check - seconds: ", secondsPassed, ", hours: ", hoursPassed, 
+                      ", max hours: ", config.MaxBreakoutReturnHours());
+                      
+            if(hoursPassed > config.MaxBreakoutReturnHours())
+            {
+                if(config.DebugMode())
+                    Print("DEBUG: UP breakout expired - time elapsed (", hoursPassed, " hours) exceeds maximum (", config.MaxBreakoutReturnHours(), " hours)");
+                // Сбрасываем флаг пробоя, так как время истекло
+                upBreakoutDetected = false;
+                upBreakoutPrice = 0.0;
+                upBreakoutTime = 0;
+            }
         }
     }
     
@@ -328,17 +354,43 @@ void ProcessSignalSearch()
                   
         if(currentPrice >= (rangeLow + onePoint))
         {
-            // Проверяем, не превышает ли время между пробоем и возвратом максимальное значение
-            int secondsPassed = (int)(currentTime - downBreakoutTime);
-            int hoursPassed = secondsPassed / 3600;
-            
-            if(config.DebugMode())
-                Print("DEBUG: Return after DOWN breakout → Opening BUY (time elapsed: ", hoursPassed, " hours)");
+            // Проверяем корректность времени
+            if(currentTime < downBreakoutTime)
+            {
+                if(config.DebugMode())
+                    Print("DEBUG: WARNING - Current time (", TimeToString(currentTime), ") is before breakout time (", TimeToString(downBreakoutTime), "). Resetting DOWN breakout flag.");
+                // Сбрасываем флаг пробоя, так как время некорректно
+                downBreakoutDetected = false;
+                downBreakoutPrice = 0.0;
+                downBreakoutTime = 0;
+            }
+            else
+            {
+                // Проверяем, не превышает ли время между пробоем и возвратом максимальное значение
+                int secondsPassed = (int)(currentTime - downBreakoutTime);
+                int hoursPassed = secondsPassed / 3600;
                 
-            OpenBuyPosition();
-            ResetBreakoutFlags();
-            systemState = STATE_POSITION_OPEN;
-            return; // Важно: выходим после открытия позиции
+                if(config.DebugMode())
+                    Print("DEBUG: Return after DOWN breakout → Opening BUY (time elapsed: ", hoursPassed, " hours)");
+                    
+                // Только если время в пределах допустимого, открываем позицию
+                if(hoursPassed <= config.MaxBreakoutReturnHours())
+                {
+                    OpenBuyPosition();
+                    ResetBreakoutFlags();
+                    systemState = STATE_POSITION_OPEN;
+                    return; // Важно: выходим после открытия позиции
+                }
+                else
+                {
+                    if(config.DebugMode())
+                        Print("DEBUG: DOWN breakout return ignored - time elapsed (", hoursPassed, " hours) exceeds maximum (", config.MaxBreakoutReturnHours(), " hours)");
+                    // Сбрасываем флаг пробоя, так как время истекло
+                    downBreakoutDetected = false;
+                    downBreakoutPrice = 0.0;
+                    downBreakoutTime = 0;
+                }
+            }
         }
     }
     
@@ -351,17 +403,43 @@ void ProcessSignalSearch()
                   
         if(currentPrice <= (rangeHigh - onePoint))
         {
-            // Проверяем, не превышает ли время между пробоем и возвратом максимальное значение
-            int secondsPassed = (int)(currentTime - upBreakoutTime);
-            int hoursPassed = secondsPassed / 3600;
-            
-            if(config.DebugMode())
-                Print("DEBUG: Return after UP breakout → Opening SELL (time elapsed: ", hoursPassed, " hours)");
+            // Проверяем корректность времени
+            if(currentTime < upBreakoutTime)
+            {
+                if(config.DebugMode())
+                    Print("DEBUG: WARNING - Current time (", TimeToString(currentTime), ") is before breakout time (", TimeToString(upBreakoutTime), "). Resetting UP breakout flag.");
+                // Сбрасываем флаг пробоя, так как время некорректно
+                upBreakoutDetected = false;
+                upBreakoutPrice = 0.0;
+                upBreakoutTime = 0;
+            }
+            else
+            {
+                // Проверяем, не превышает ли время между пробоем и возвратом максимальное значение
+                int secondsPassed = (int)(currentTime - upBreakoutTime);
+                int hoursPassed = secondsPassed / 3600;
                 
-            OpenSellPosition();
-            ResetBreakoutFlags();
-            systemState = STATE_POSITION_OPEN;
-            return; // Важно: выходим после открытия позиции
+                if(config.DebugMode())
+                    Print("DEBUG: Return after UP breakout → Opening SELL (time elapsed: ", hoursPassed, " hours)");
+                    
+                // Только если время в пределах допустимого, открываем позицию
+                if(hoursPassed <= config.MaxBreakoutReturnHours())
+                {
+                    OpenSellPosition();
+                    ResetBreakoutFlags();
+                    systemState = STATE_POSITION_OPEN;
+                    return; // Важно: выходим после открытия позиции
+                }
+                else
+                {
+                    if(config.DebugMode())
+                        Print("DEBUG: UP breakout return ignored - time elapsed (", hoursPassed, " hours) exceeds maximum (", config.MaxBreakoutReturnHours(), " hours)");
+                    // Сбрасываем флаг пробоя, так как время истекло
+                    upBreakoutDetected = false;
+                    upBreakoutPrice = 0.0;
+                    upBreakoutTime = 0;
+                }
+            }
         }
     }
 }
