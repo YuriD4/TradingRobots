@@ -239,60 +239,41 @@ void ProcessSignalSearch()
     double onePoint = utils.PointsToPrice(1);
     datetime currentTime = TimeCurrent();
     
-    // Простая и понятная бизнес-логика:
-    // 1. Если цена внутри диапазона - сбрасываем все флаги
-    // 2. Если цена вышла ниже диапазона - запоминаем это
-    // 3. Если цена вышла выше диапазона - запоминаем это
-    // 4. Если был выход вниз и цена вернулась в диапазон - проверяем время и открываем BUY
-    // 5. Если был выход вверх и цена вернулась в диапазон - проверяем время и открываем SELL
-    
-    // Если цена внутри диапазона, сбрасываем все флаги
-    if(currentPrice >= (rangeLow - breakoutDistance) && currentPrice <= (rangeHigh + breakoutDistance))
-    {
-        // Цена внутри диапазона (с учетом возможного небольшого отклонения)
-        // Это может быть начальное состояние или возврат после пробоя
-        if(downBreakoutDetected || upBreakoutDetected)
-        {
-            if(config.DebugMode())
-                Print("DEBUG: Price is back in range, resetting breakout flags");
-            ResetBreakoutFlags();
-        }
-        return;
-    }
+    // ЧЕТКАЯ БИЗНЕС-ЛОГИКА:
+    // 1. Ждем, пока цена ВЫЙДЕТ за границы диапазона (вверх или вниз)
+    // 2. Запоминаем время выхода
+    // 3. Ждем, пока цена ВЕРНЕТСЯ в диапазон
+    // 4. Проверяем, что между выходом и возвращением прошло ≤ 3 часов
+    // 5. Если условие выполняется - открываем сделку
+    // 6. Если условие не выполняется - сбрасываем флаги и ждем нового выхода
     
     // 1. Обнаружение пробоя ВНИЗ (цена вышла ниже диапазона)
-    if(currentPrice < (rangeLow - breakoutDistance))
+    if(!downBreakoutDetected && currentPrice < (rangeLow - breakoutDistance))
     {
-        if(!downBreakoutDetected)
+        // Фиксируем момент первого выхода вниз
+        downBreakoutDetected = true;
+        downBreakoutPrice = currentPrice;
+        downBreakoutTime = currentTime;
+        
+        if(config.DebugMode())
         {
-            // Фиксируем момент первого выхода вниз
-            downBreakoutDetected = true;
-            downBreakoutPrice = currentPrice;
-            downBreakoutTime = currentTime;
-            
-            if(config.DebugMode())
-            {
-                Print("CRITICAL: DOWN breakout DETECTED at price ", currentPrice, " at time ", TimeToString(currentTime));
-                Print("CRITICAL: Range low: ", rangeLow, ", Breakout threshold: ", (rangeLow - breakoutDistance));
-            }
+            Print("CRITICAL: DOWN breakout DETECTED at price ", currentPrice, " at time ", TimeToString(currentTime));
+            Print("CRITICAL: Range low: ", rangeLow, ", Breakout threshold: ", (rangeLow - breakoutDistance));
         }
     }
     
     // 2. Обнаружение пробоя ВВЕРХ (цена вышла выше диапазона)
-    if(currentPrice > (rangeHigh + breakoutDistance))
+    if(!upBreakoutDetected && currentPrice > (rangeHigh + breakoutDistance))
     {
-        if(!upBreakoutDetected)
+        // Фиксируем момент первого выхода вверх
+        upBreakoutDetected = true;
+        upBreakoutPrice = currentPrice;
+        upBreakoutTime = currentTime;
+        
+        if(config.DebugMode())
         {
-            // Фиксируем момент первого выхода вверх
-            upBreakoutDetected = true;
-            upBreakoutPrice = currentPrice;
-            upBreakoutTime = currentTime;
-            
-            if(config.DebugMode())
-            {
-                Print("CRITICAL: UP breakout DETECTED at price ", currentPrice, " at time ", TimeToString(currentTime));
-                Print("CRITICAL: Range high: ", rangeHigh, ", Breakout threshold: ", (rangeHigh + breakoutDistance));
-            }
+            Print("CRITICAL: UP breakout DETECTED at price ", currentPrice, " at time ", TimeToString(currentTime));
+            Print("CRITICAL: Range high: ", rangeHigh, ", Breakout threshold: ", (rangeHigh + breakoutDistance));
         }
     }
     
@@ -300,12 +281,15 @@ void ProcessSignalSearch()
     if(downBreakoutDetected && currentPrice >= (rangeLow + onePoint))
     {
         // Цена вернулась в диапазон снизу
+        // Проверяем время между выходом и возвращением
         int secondsPassed = (int)(currentTime - downBreakoutTime);
         int hoursPassed = secondsPassed / 3600;
         
         if(config.DebugMode())
         {
             Print("CRITICAL: Return after DOWN breakout detected");
+            Print("CRITICAL: Breakout time: ", TimeToString(downBreakoutTime));
+            Print("CRITICAL: Return time: ", TimeToString(currentTime));
             Print("CRITICAL: Time elapsed: ", hoursPassed, " hours (max allowed: ", config.MaxBreakoutReturnHours(), " hours)");
         }
         
@@ -313,7 +297,7 @@ void ProcessSignalSearch()
         if(hoursPassed <= config.MaxBreakoutReturnHours())
         {
             if(config.DebugMode())
-                Print("CRITICAL: Opening BUY position - valid breakout-return pattern");
+                Print("CRITICAL: Opening BUY position - valid breakout-return pattern within ", hoursPassed, " hours");
                 
             OpenBuyPosition();
             ResetBreakoutFlags();
@@ -324,7 +308,7 @@ void ProcessSignalSearch()
         {
             // Время истекло, сбрасываем флаг
             if(config.DebugMode())
-                Print("CRITICAL: DOWN breakout return ignored - time expired (", hoursPassed, " hours > ", config.MaxBreakoutReturnHours(), " hours)");
+                Print("CRITICAL: DOWN breakout return IGNORED - time expired (", hoursPassed, " hours > ", config.MaxBreakoutReturnHours(), " hours)");
                 
             downBreakoutDetected = false;
             downBreakoutPrice = 0.0;
@@ -336,12 +320,15 @@ void ProcessSignalSearch()
     if(upBreakoutDetected && currentPrice <= (rangeHigh - onePoint))
     {
         // Цена вернулась в диапазон сверху
+        // Проверяем время между выходом и возвращением
         int secondsPassed = (int)(currentTime - upBreakoutTime);
         int hoursPassed = secondsPassed / 3600;
         
         if(config.DebugMode())
         {
             Print("CRITICAL: Return after UP breakout detected");
+            Print("CRITICAL: Breakout time: ", TimeToString(upBreakoutTime));
+            Print("CRITICAL: Return time: ", TimeToString(currentTime));
             Print("CRITICAL: Time elapsed: ", hoursPassed, " hours (max allowed: ", config.MaxBreakoutReturnHours(), " hours)");
         }
         
@@ -349,7 +336,7 @@ void ProcessSignalSearch()
         if(hoursPassed <= config.MaxBreakoutReturnHours())
         {
             if(config.DebugMode())
-                Print("CRITICAL: Opening SELL position - valid breakout-return pattern");
+                Print("CRITICAL: Opening SELL position - valid breakout-return pattern within ", hoursPassed, " hours");
                 
             OpenSellPosition();
             ResetBreakoutFlags();
@@ -360,11 +347,28 @@ void ProcessSignalSearch()
         {
             // Время истекло, сбрасываем флаг
             if(config.DebugMode())
-                Print("CRITICAL: UP breakout return ignored - time expired (", hoursPassed, " hours > ", config.MaxBreakoutReturnHours(), " hours)");
+                Print("CRITICAL: UP breakout return IGNORED - time expired (", hoursPassed, " hours > ", config.MaxBreakoutReturnHours(), " hours)");
                 
             upBreakoutDetected = false;
             upBreakoutPrice = 0.0;
             upBreakoutTime = 0;
+        }
+    }
+    
+    // Если цена внутри диапазона (но не возврат после пробоя), сбрасываем флаги
+    // Это нужно для случаев, когда цена просто колеблется внутри диапазона
+    if(currentPrice >= (rangeLow - breakoutDistance) && currentPrice <= (rangeHigh + breakoutDistance))
+    {
+        // Но только если не ждем возврата после пробоя
+        if(!downBreakoutDetected && !upBreakoutDetected)
+        {
+            // Цена просто внутри диапазона, сбрасываем флаги на всякий случай
+            if(downBreakoutDetected || upBreakoutDetected)
+            {
+                if(config.DebugMode())
+                    Print("DEBUG: Price is inside range without prior breakout, resetting flags");
+                ResetBreakoutFlags();
+            }
         }
     }
 }
@@ -787,6 +791,9 @@ void ResetBreakoutFlags()
 void ForceExpireBreakouts(datetime currentTime)
 {
     // Простая проверка: если с момента пробоя прошло больше 3 часов, сбрасываем флаги
+    bool downExpired = false;
+    bool upExpired = false;
+    
     if(downBreakoutDetected)
     {
         if(currentTime >= downBreakoutTime)
@@ -795,20 +802,16 @@ void ForceExpireBreakouts(datetime currentTime)
             if(hoursPassed > config.MaxBreakoutReturnHours())
             {
                 if(config.DebugMode())
-                    Print("CRITICAL: DOWN breakout expired after ", hoursPassed, " hours");
-                downBreakoutDetected = false;
-                downBreakoutPrice = 0.0;
-                downBreakoutTime = 0;
+                    Print("CRITICAL: DOWN breakout EXPIRED after ", hoursPassed, " hours (max ", config.MaxBreakoutReturnHours(), " hours)");
+                downExpired = true;
             }
         }
         else
         {
             // Время некорректно, сбрасываем флаг
             if(config.DebugMode())
-                Print("CRITICAL: Time inconsistency detected for DOWN breakout, resetting flag");
-            downBreakoutDetected = false;
-            downBreakoutPrice = 0.0;
-            downBreakoutTime = 0;
+                Print("CRITICAL: Time inconsistency for DOWN breakout, resetting flag");
+            downExpired = true;
         }
     }
     
@@ -820,21 +823,32 @@ void ForceExpireBreakouts(datetime currentTime)
             if(hoursPassed > config.MaxBreakoutReturnHours())
             {
                 if(config.DebugMode())
-                    Print("CRITICAL: UP breakout expired after ", hoursPassed, " hours");
-                upBreakoutDetected = false;
-                upBreakoutPrice = 0.0;
-                upBreakoutTime = 0;
+                    Print("CRITICAL: UP breakout EXPIRED after ", hoursPassed, " hours (max ", config.MaxBreakoutReturnHours(), " hours)");
+                upExpired = true;
             }
         }
         else
         {
             // Время некорректно, сбрасываем флаг
             if(config.DebugMode())
-                Print("CRITICAL: Time inconsistency detected for UP breakout, resetting flag");
-            upBreakoutDetected = false;
-            upBreakoutPrice = 0.0;
-            upBreakoutTime = 0;
+                Print("CRITICAL: Time inconsistency for UP breakout, resetting flag");
+            upExpired = true;
         }
+    }
+    
+    // Сбрасываем флаги в конце, чтобы не повлиять на логику выше
+    if(downExpired)
+    {
+        downBreakoutDetected = false;
+        downBreakoutPrice = 0.0;
+        downBreakoutTime = 0;
+    }
+    
+    if(upExpired)
+    {
+        upBreakoutDetected = false;
+        upBreakoutPrice = 0.0;
+        upBreakoutTime = 0;
     }
 }
 
