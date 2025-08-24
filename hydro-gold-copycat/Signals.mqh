@@ -92,10 +92,24 @@ int CheckSignal()
          if(IsSignificantHigh(i, extremum_period_bars, high))
            {
             double breakout_level = high[i];
-            // Check for breakout and proximity
-            if(current_price > breakout_level && (current_price - breakout_level) <= InpMaxDistancePoints * _Point)
+            bool is_first_break = true;
+            // Check if the level has been broken since it was formed
+            for(int j = i - 1; j > 0; j--)
               {
-               return 1; // Buy signal
+               if(high[j] > breakout_level)
+                 {
+                  is_first_break = false;
+                  break;
+                 }
+              }
+
+            if(is_first_break)
+              {
+               // Check for breakout and proximity
+               if(current_price > breakout_level && (current_price - breakout_level) <= InpMaxDistancePoints * _Point)
+                 {
+                  return 1; // Buy signal
+                 }
               }
             break; // We only care about the most recent significant level
            }
@@ -111,10 +125,24 @@ int CheckSignal()
          if(IsSignificantLow(i, extremum_period_bars, low))
            {
             double breakout_level = low[i];
-            // Check for breakout and proximity
-            if(current_price < breakout_level && (breakout_level - current_price) <= InpMaxDistancePoints * _Point)
+            bool is_first_break = true;
+            // Check if the level has been broken since it was formed
+            for(int j = i - 1; j > 0; j--)
               {
-               return -1; // Sell signal
+               if(low[j] < breakout_level)
+                 {
+                  is_first_break = false;
+                  break;
+                 }
+              }
+
+            if(is_first_break)
+              {
+               // Check for breakout and proximity
+               if(current_price < breakout_level && (breakout_level - current_price) <= InpMaxDistancePoints * _Point)
+                 {
+                  return -1; // Sell signal
+                 }
               }
             break; // We only care about the most recent significant level
            }
