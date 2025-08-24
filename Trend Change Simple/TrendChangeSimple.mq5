@@ -59,6 +59,11 @@ double                        downBreakoutPrice = 0.0;
 datetime                      upBreakoutTime = 0;
 datetime                      downBreakoutTime = 0;
 
+// Переменные для отслеживания состояния цены относительно диапазона
+bool                          wasPriceAboveRange = false;
+bool                          wasPriceBelowRange = false;
+bool                          wasPriceInRange = false;
+
 // Переменные для системы разворотов
 int                           currentReversalCount = 0;
 double                        currentLotSize = 0.0;
@@ -108,6 +113,26 @@ int OnInit()
         Print("DEBUG: System reset completed. Reversals: ", currentReversalCount,
               ", Lot: ", currentLotSize,
               ", Last direction: ", EnumToString(lastTradeDirection));
+    }
+    
+    // Инициализируем переменные состояния цены
+    double currentPrice = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+    double rangeHigh = rangeManager.GetRangeHigh();
+    double rangeLow = rangeManager.GetRangeLow();
+    double breakoutDistance = utils.PointsToPrice(config.BreakoutPoints());
+    
+    wasPriceAboveRange = (currentPrice > (rangeHigh + breakoutDistance));
+    wasPriceBelowRange = (currentPrice < (rangeLow - breakoutDistance));
+    wasPriceInRange = (!wasPriceAboveRange && !wasPriceBelowRange);
+    
+    if(config.DebugMode())
+    {
+        Print("DEBUG: Initial price state - Above: ", wasPriceAboveRange ? "YES" : "NO",
+              ", Below: ", wasPriceBelowRange ? "YES" : "NO",
+              ", In range: ", wasPriceInRange ? "YES" : "NO");
+        Print("DEBUG: Current price: ", currentPrice);
+        Print("DEBUG: Range high: ", rangeHigh, ", Range low: ", rangeLow);
+        Print("DEBUG: Breakout distance: ", breakoutDistance);
     }
     
     // Пытаемся определить направление последней открытой позиции
@@ -247,8 +272,24 @@ void ProcessSignalSearch()
     // 5. Если условие выполняется - открываем сделку
     // 6. Если условие не выполняется - сбрасываем флаги и ждем нового выхода
     
-    // 1. Обнаружение пробоя ВНИЗ (цена вышла ниже диапазона)
-    if(!downBreakoutDetected && currentPrice < (rangeLow - breakoutDistance))
+    // Отслеживаем текущее состояние цены относительно диапазона
+    bool isPriceAboveRange = (currentPrice > (rangeHigh + breakoutDistance));
+    bool isPriceBelowRange = (currentPrice < (rangeLow - breakoutDistance));
+    bool isPriceInRange = (!isPriceAboveRange && !isPriceBelowRange);
+    
+    // Отслеживаем переходы цены
+    bool enteredRangeFromAbove = (wasPriceAboveRange && isPriceInRange);
+    bool enteredRangeFromBelow = (wasPriceBelowRange && isPriceInRange);
+    bool exitedRangeUp = (wasPriceInRange && isPriceAboveRange);
+    bool exitedRangeDown = (wasPriceInRange && isPriceBelowRange);
+    
+    // Обновляем состояние цены
+    wasPriceAboveRange = isPriceAboveRange;
+    wasPriceBelowRange = isPriceBelowRange;
+    wasPriceInRange = isPriceInRange;
+    
+    // 1. Обнаружение пробоя ВНИЗ (цена вышла из диапазона вниз)
+    if(!downBreakoutDetected && exitedRangeDown)
     {
         // Фиксируем момент первого выхода вниз
         downBreakoutDetected = true;
@@ -259,8 +300,8 @@ void ProcessSignalSearch()
         Print("CRITICAL: Range low: ", rangeLow, ", Breakout threshold: ", (rangeLow - breakoutDistance));
     }
     
-    // 2. Обнаружение пробоя ВВЕРХ (цена вышла выше диапазона)
-    if(!upBreakoutDetected && currentPrice > (rangeHigh + breakoutDistance))
+    // 2. Обнаружение пробоя ВВЕРХ (цена вышла из диапазона вверх)
+    if(!upBreakoutDetected && exitedRangeUp)
     {
         // Фиксируем момент первого выхода вверх
         upBreakoutDetected = true;
@@ -722,6 +763,11 @@ void ResetSystem()
     currentLotSize = config.LotSize();
     lastTradeDirection = WRONG_VALUE;
     trailingStopActivated = false;
+    
+    // Сбрасываем переменные отслеживания состояния цены
+    wasPriceAboveRange = false;
+    wasPriceBelowRange = false;
+    wasPriceInRange = true; // По умолчанию считаем, что цена в диапазоне
     
     if(config.DebugMode())
         Print("DEBUG: System reset - Lot=", currentLotSize, ", Reversals=", currentReversalCount,
