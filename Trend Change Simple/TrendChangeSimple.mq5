@@ -137,19 +137,19 @@ int OnInit()
     downBreakoutTime = 0;
     
     // 2. ОПРЕДЕЛЯЕМ НАЧАЛЬНОЕ ПОЛОЖЕНИЕ ЦЕНЫ ОТНОСИТЕЛЬНО ДИАПАЗОНА
-    bool priceStartedAboveRange = (currentPrice > rangeHigh);
-    bool priceStartedBelowRange = (currentPrice < rangeLow);
+    bool priceIsAboveRange = (currentPrice > rangeHigh);
+    bool priceIsBelowRange = (currentPrice < rangeLow);
     
     // 3. УСТАНАВЛИВАЕМ ОГРАНИЧЕНИЯ НА ТОРГОВЛЮ ПО НАПРАВЛЕНИЯМ
     // Если цена НАЧАЛА ДЕНЬ вне диапазона, блокируем соответствующее направление
-    if(priceStartedAboveRange)
+    if(priceIsAboveRange)
     {
         canTradeUp = false;     // Цена уже выше диапазона → блокируем торговлю вверх
         if(config.DebugMode())
             Print("DEBUG: Price started ABOVE range - blocking UP trading for today");
     }
     
-    if(priceStartedBelowRange)
+    if(priceIsBelowRange)
     {
         canTradeDown = false;   // Цена уже ниже диапазона → блокируем торговлю вниз
         if(config.DebugMode())
@@ -162,8 +162,8 @@ int OnInit()
         Print("DEBUG: Current price: ", currentPrice);
         Print("DEBUG: Range - High: ", rangeHigh, ", Low: ", rangeLow);
         Print("DEBUG: Breakout distance: ", breakoutDistance);
-        Print("DEBUG: Price started - Above range: ", priceStartedAboveRange ? "YES" : "NO", 
-              ", Below range: ", priceStartedBelowRange ? "YES" : "NO");
+        Print("DEBUG: Price started - Above range: ", priceIsAboveRange ? "YES" : "NO", 
+              ", Below range: ", priceIsBelowRange ? "YES" : "NO");
         Print("DEBUG: Trading permissions - Up: ", canTradeUp ? "ALLOWED" : "BLOCKED", 
               ", Down: ", canTradeDown ? "ALLOWED" : "BLOCKED");
         Print("DEBUG: ===========================");
