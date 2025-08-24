@@ -1,0 +1,70 @@
+# Extracted Trades from Screenshot
+
+**IMPORTANT NOTE ON TIMEZONES:**
+The trade closure times listed below are based on the MetaTrader platform's system time, as shown in the screenshot.
+The historical data in the accompanying CSV file (`XAUUSD_Candlestick_1_M_BID_18.08.2025-20.08.2025.csv`) is in UTC.
+This difference must be accounted for during analysis.
+
+---
+
+## Trade List (Ignoring large loss)
+
+1.  **Type:** buy
+    **Volume:** 0.11
+    **Profit:** 40.70
+    **Close Time:** 2025.08.18 04:03:30
+    **Open/Close Price:** 3339.32 -> 3343.02
+
+2.  **Type:** buy
+    **Volume:** 0.11
+    **Profit:** 34.43
+    **Close Time:** 2025.08.18 06:49:46
+    **Open/Close Price:** 3346.91 -> 3350.04
+
+3.  **Type:** sell
+    **Volume:** 0.11
+    **Profit:** 38.50
+    **Close Time:** 2025.08.18 16:10:25
+    **Open/Close Price:** 3345.61 -> 3342.11
+
+4.  **Type:** sell
+    **Volume:** 0.11
+    **Profit:** 36.96
+    **Close Time:** 2025.08.19 03:01:00
+    **Open/Close Price:** 3331.88 -> 3328.52
+
+5.  **Type:** buy
+    **Volume:** 0.11
+    **Profit:** 45.76
+    **Close Time:** 2025.08.19 20:44:16
+    **Open/Close Price:** 3315.30 -> 3319.46
+
+6.  **Type:** buy
+    **Volume:** 0.11
+    **Profit:** 36.52
+    **Close Time:** 2025.08.20 04:43:09
+    **Open/Close Price:** 3312.47 -> 3315.79
+
+7.  **Type:** buy
+    **Volume:** 0.11
+    **Profit:** 37.73
+    **Close Time:** 2025.08.20 08:36:25
+    **Open/Close Price:** 3317.47 -> 3320.90
+
+8.  **Type:** buy
+    **Volume:** 0.11
+    **Profit:** 36.19
+    **Close Time:** 2025.08.20 10:20:19
+    **Open/Close Price:** 3323.71 -> 3327.00
+
+9.  **Type:** sell
+    **Volume:** 0.11
+    **Profit:** 6.60
+    **Close Time:** 2025.08.20 11:00:31
+    **Open/Close Price:** 3324.62 -> 3324.02
+
+10. **Type:** sell
+    **Volume:** 0.11
+    **Profit:** 8.47
+    **Close Time:** 2025.08.20 11:00:31
+    **Open/Close Price:** 3324.79 -> 3324.02
