@@ -64,6 +64,10 @@ bool                          wasPriceAboveRange = false;
 bool                          wasPriceBelowRange = false;
 bool                          wasPriceInRange = false;
 
+// Переменные для ограничения торговли по направлениям
+bool                          canTradeUp = true;    // Можно ли торговать пробой вверх
+bool                          canTradeDown = true;  // Можно ли торговать пробой вниз
+
 // Переменные для системы разворотов
 int                           currentReversalCount = 0;
 double                        currentLotSize = 0.0;
@@ -127,14 +131,24 @@ int OnInit()
     wasPriceBelowRange = false;
     wasPriceInRange = true; // Начинаем с предположения, что цена в диапазоне
     
+    // Определяем, в каком состоянии начала торговля
+    bool priceIsAboveRange = (currentPrice > (rangeHigh + breakoutDistance));
+    bool priceIsBelowRange = (currentPrice < (rangeLow - breakoutDistance));
+    
+    // Устанавливаем ограничения на торговлю в зависимости от начального положения цены
+    canTradeUp = !priceIsAboveRange;   // Можно торговать вверх, если цена НЕ выше диапазона
+    canTradeDown = !priceIsBelowRange; // Можно торговать вниз, если цена НЕ ниже диапазона
+    
     if(config.DebugMode())
     {
         Print("DEBUG: Initial price state - Starting with price IN RANGE to prevent false breakouts");
         Print("DEBUG: Current price: ", currentPrice);
         Print("DEBUG: Range high: ", rangeHigh, ", Range low: ", rangeLow);
         Print("DEBUG: Breakout distance: ", breakoutDistance);
-        Print("DEBUG: Price ABOVE range: ", (currentPrice > (rangeHigh + breakoutDistance)) ? "YES" : "NO");
-        Print("DEBUG: Price BELOW range: ", (currentPrice < (rangeLow - breakoutDistance)) ? "YES" : "NO");
+        Print("DEBUG: Price ABOVE range: ", priceIsAboveRange ? "YES" : "NO");
+        Print("DEBUG: Price BELOW range: ", priceIsBelowRange ? "YES" : "NO");
+        Print("DEBUG: Trading permissions - Up: ", canTradeUp ? "ALLOWED" : "BLOCKED", 
+              ", Down: ", canTradeDown ? "ALLOWED" : "BLOCKED");
     }
     
     // Пытаемся определить направление последней открытой позиции
@@ -291,8 +305,10 @@ void ProcessSignalSearch()
     wasPriceInRange = isPriceInRange;
     
     // 1. Обнаружение пробоя ВНИЗ (цена вышла из диапазона вниз)
-    // Пробой регистрируется только если цена была в диапазоне и вышла вниз
-    if(!downBreakoutDetected && exitedRangeDown)
+    // Пробой регистрируется только если:
+    // - цена была в диапазоне и вышла вниз
+    // - торговля вниз разрешена (canTradeDown = true)
+    if(!downBreakoutDetected && exitedRangeDown && canTradeDown)
     {
         // Фиксируем момент первого выхода вниз
         downBreakoutDetected = true;
@@ -304,11 +320,23 @@ void ProcessSignalSearch()
         Print("CRITICAL: Previous state - In range: ", wasPriceInRange ? "YES" : "NO", 
               ", Above range: ", wasPriceAboveRange ? "YES" : "NO", 
               ", Below range: ", wasPriceBelowRange ? "YES" : "NO");
+        Print("CRITICAL: Trading permission - Down breakout ALLOWED");
+        
+        // Блокируем дальнейшую торговлю вниз в течение этого дня
+        canTradeDown = false;
+        Print("CRITICAL: Trading permission - Down breakout BLOCKED for the rest of the day");
+    }
+    else if(!canTradeDown && exitedRangeDown)
+    {
+        Print("CRITICAL: DOWN breakout DETECTED but IGNORED - trading permission BLOCKED");
+        Print("CRITICAL: Price exited range down but we started below range, so no trade allowed");
     }
     
     // 2. Обнаружение пробоя ВВЕРХ (цена вышла из диапазона вверх)
-    // Пробой регистрируется только если цена была в диапазоне и вышла вверх
-    if(!upBreakoutDetected && exitedRangeUp)
+    // Пробой регистрируется только если:
+    // - цена была в диапазоне и вышла вверх
+    // - торговля вверх разрешена (canTradeUp = true)
+    if(!upBreakoutDetected && exitedRangeUp && canTradeUp)
     {
         // Фиксируем момент первого выхода вверх
         upBreakoutDetected = true;
@@ -320,6 +348,16 @@ void ProcessSignalSearch()
         Print("CRITICAL: Previous state - In range: ", wasPriceInRange ? "YES" : "NO", 
               ", Above range: ", wasPriceAboveRange ? "YES" : "NO", 
               ", Below range: ", wasPriceBelowRange ? "YES" : "NO");
+        Print("CRITICAL: Trading permission - Up breakout ALLOWED");
+        
+        // Блокируем дальнейшую торговлю вверх в течение этого дня
+        canTradeUp = false;
+        Print("CRITICAL: Trading permission - Up breakout BLOCKED for the rest of the day");
+    }
+    else if(!canTradeUp && exitedRangeUp)
+    {
+        Print("CRITICAL: UP breakout DETECTED but IGNORED - trading permission BLOCKED");
+        Print("CRITICAL: Price exited range up but we started above range, so no trade allowed");
     }
     
     // 3. Возврат после пробоя ВНИЗ → сигнал BUY
@@ -733,17 +771,14 @@ void CheckNewDay()
               ", Last blocked day: ", lastBlockedDay,
               ", Last force close day: ", lastForceCloseDay,
               ", State: ", EnumToString(systemState));
+        Print("DEBUG: Trading permissions before check - Up: ", canTradeUp ? "ALLOWED" : "BLOCKED", 
+              ", Down: ", canTradeDown ? "ALLOWED" : "BLOCKED");
     }
     
     if(systemState == STATE_BLOCKED_UNTIL_TOMORROW && currentDay > lastBlockedDay)
     {
         if(config.DebugMode())
-        {
             Print("DEBUG: *** NEW DAY *** → System unblocked");
-            Print("DEBUG: Breakout flags status before reset:");
-            Print("DEBUG:   DOWN breakout detected: ", downBreakoutDetected ? "YES" : "NO");
-            Print("DEBUG:   UP breakout detected: ", upBreakoutDetected ? "YES" : "NO");
-        }
             
         systemState = STATE_LOOKING_FOR_SIGNAL;
         ResetSystem();
@@ -752,9 +787,8 @@ void CheckNewDay()
         
         if(config.DebugMode())
         {
-            Print("DEBUG: Breakout flags status after reset:");
-            Print("DEBUG:   DOWN breakout detected: ", downBreakoutDetected ? "YES" : "NO");
-            Print("DEBUG:   UP breakout detected: ", upBreakoutDetected ? "YES" : "NO");
+            Print("DEBUG: Trading permissions after reset - Up: ", canTradeUp ? "ALLOWED" : "BLOCKED", 
+                  ", Down: ", canTradeDown ? "ALLOWED" : "BLOCKED");
         }
     }
     else if(systemState == STATE_BLOCKED_UNTIL_TOMORROW && currentDay == lastBlockedDay)
@@ -778,6 +812,10 @@ void ResetSystem()
     wasPriceAboveRange = false;
     wasPriceBelowRange = false;
     wasPriceInRange = true; // По умолчанию считаем, что цена в диапазоне
+    
+    // Сбрасываем ограничения на торговлю (разрешаем оба направления)
+    canTradeUp = true;
+    canTradeDown = true;
     
     if(config.DebugMode())
         Print("DEBUG: System reset - Lot=", currentLotSize, ", Reversals=", currentReversalCount,
