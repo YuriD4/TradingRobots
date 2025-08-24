@@ -136,8 +136,19 @@ int OnInit()
     bool priceIsBelowRange = (currentPrice < (rangeLow - breakoutDistance));
     
     // Устанавливаем ограничения на торговлю в зависимости от начального положения цены
-    canTradeUp = !priceIsAboveRange;   // Можно торговать вверх, если цена НЕ выше диапазона
-    canTradeDown = !priceIsBelowRange; // Можно торговать вниз, если цена НЕ ниже диапазона
+    // Если цена НАЧАЛА ДЕНЬ вне диапазона, блокируем соответствующее направление
+    canTradeUp = !priceIsAboveRange;   // Можно торговать вверх, если цена НЕ выше диапазона в начале дня
+    canTradeDown = !priceIsBelowRange; // Можно торговать вниз, если цена НЕ ниже диапазона в начале дня
+    
+    if(config.DebugMode())
+    {
+        Print("DEBUG: Initial price position check:");
+        Print("DEBUG:   Current price: ", currentPrice);
+        Print("DEBUG:   Range high + distance: ", (rangeHigh + breakoutDistance));
+        Print("DEBUG:   Range low - distance: ", (rangeLow - breakoutDistance));
+        Print("DEBUG:   Price is ABOVE range: ", priceIsAboveRange ? "YES" : "NO");
+        Print("DEBUG:   Price is BELOW range: ", priceIsBelowRange ? "YES" : "NO");
+    }
     
     if(config.DebugMode())
     {
@@ -289,26 +300,51 @@ void ProcessSignalSearch()
     // 6. Если условие не выполняется - сбрасываем флаги и ждем нового выхода
     
     // Отслеживаем текущее состояние цены относительно диапазона
-    bool isPriceAboveRange = (currentPrice > (rangeHigh + breakoutDistance));
-    bool isPriceBelowRange = (currentPrice < (rangeLow - breakoutDistance));
-    bool isPriceInRange = (!isPriceAboveRange && !isPriceBelowRange);
+    // ВАЖНО: Здесь мы проверяем, находится ли цена ВНУТРИ границ диапазона, а не вышла ли она на расстояние
+    bool isPriceStrictlyAboveRange = (currentPrice > rangeHigh);
+    bool isPriceStrictlyBelowRange = (currentPrice < rangeLow);
+    bool isPriceStrictlyInRange = (!isPriceStrictlyAboveRange && !isPriceStrictlyBelowRange);
     
-    // Отслеживаем переходы цены
-    bool enteredRangeFromAbove = (wasPriceAboveRange && isPriceInRange);
-    bool enteredRangeFromBelow = (wasPriceBelowRange && isPriceInRange);
-    bool exitedRangeUp = (wasPriceInRange && isPriceAboveRange);
-    bool exitedRangeDown = (wasPriceInRange && isPriceBelowRange);
+    // Отслеживаем переходы цены относительно границ диапазона (без учета расстояния)
+    bool enteredRangeFromAbove = (wasPriceAboveRange && isPriceStrictlyInRange);
+    bool enteredRangeFromBelow = (wasPriceBelowRange && isPriceStrictlyInRange);
+    bool exitedRangeUp = (wasPriceInRange && isPriceStrictlyAboveRange);
+    bool exitedRangeDown = (wasPriceInRange && isPriceStrictlyBelowRange);
     
     // Обновляем состояние цены
-    wasPriceAboveRange = isPriceAboveRange;
-    wasPriceBelowRange = isPriceBelowRange;
-    wasPriceInRange = isPriceInRange;
+    wasPriceAboveRange = isPriceStrictlyAboveRange;
+    wasPriceBelowRange = isPriceStrictlyBelowRange;
+    wasPriceInRange = isPriceStrictlyInRange;
     
-    // 1. Обнаружение пробоя ВНИЗ (цена вышла из диапазона вниз)
+    // Проверяем, произошел ли настоящий пробой (выход на нужное расстояние)
+    bool isActualBreakoutDown = (currentPrice < (rangeLow - breakoutDistance));
+    bool isActualBreakoutUp = (currentPrice > (rangeHigh + breakoutDistance));
+    
+    if(config.DebugMode())
+    {
+        Print("DEBUG: Price state tracking:");
+        Print("DEBUG:   Current price: ", currentPrice);
+        Print("DEBUG:   Range high: ", rangeHigh, ", Range low: ", rangeLow);
+        Print("DEBUG:   Breakout distance: ", breakoutDistance);
+        Print("DEBUG:   Strict range boundaries - Above: ", isPriceStrictlyAboveRange ? "YES" : "NO",
+              ", Below: ", isPriceStrictlyBelowRange ? "YES" : "NO",
+              ", In range: ", isPriceStrictlyInRange ? "YES" : "NO");
+        Print("DEBUG:   Actual breakout detection - Up: ", isActualBreakoutUp ? "YES" : "NO",
+              ", Down: ", isActualBreakoutDown ? "YES" : "NO");
+        Print("DEBUG:   Previous state - Above: ", wasPriceAboveRange ? "YES" : "NO",
+              ", Below: ", wasPriceBelowRange ? "YES" : "NO",
+              ", In range: ", wasPriceInRange ? "YES" : "NO");
+        Print("DEBUG:   Trading permissions - Up: ", canTradeUp ? "ALLOWED" : "BLOCKED",
+              ", Down: ", canTradeDown ? "ALLOWED" : "BLOCKED");
+        Print("DEBUG:   Existing breakouts - Up: ", upBreakoutDetected ? "DETECTED" : "NOT DETECTED",
+              ", Down: ", downBreakoutDetected ? "DETECTED" : "NOT DETECTED");
+    }
+    
+    // 1. Обнаружение пробоя ВНИЗ (цена вышла из диапазона на нужное расстояние)
     // Пробой регистрируется только если:
-    // - цена была в диапазоне и вышла вниз
+    // - цена была в диапазоне и вышла вниз на нужное расстояние
     // - торговля вниз разрешена (canTradeDown = true)
-    if(!downBreakoutDetected && exitedRangeDown && canTradeDown)
+    if(!downBreakoutDetected && isActualBreakoutDown && wasPriceInRange && canTradeDown)
     {
         // Фиксируем момент первого выхода вниз
         downBreakoutDetected = true;
@@ -317,26 +353,23 @@ void ProcessSignalSearch()
         
         Print("CRITICAL: DOWN breakout DETECTED at price ", currentPrice, " at time ", TimeToString(currentTime));
         Print("CRITICAL: Range low: ", rangeLow, ", Breakout threshold: ", (rangeLow - breakoutDistance));
-        Print("CRITICAL: Previous state - In range: ", wasPriceInRange ? "YES" : "NO", 
-              ", Above range: ", wasPriceAboveRange ? "YES" : "NO", 
-              ", Below range: ", wasPriceBelowRange ? "YES" : "NO");
         Print("CRITICAL: Trading permission - Down breakout ALLOWED");
         
         // Блокируем дальнейшую торговлю вниз в течение этого дня
         canTradeDown = false;
         Print("CRITICAL: Trading permission - Down breakout BLOCKED for the rest of the day");
     }
-    else if(!canTradeDown && exitedRangeDown)
+    else if(!canTradeDown && isActualBreakoutDown && wasPriceInRange)
     {
         Print("CRITICAL: DOWN breakout DETECTED but IGNORED - trading permission BLOCKED");
-        Print("CRITICAL: Price exited range down but we started below range, so no trade allowed");
+        Print("CRITICAL: Price broke range down but we started below range or already had down breakout");
     }
     
-    // 2. Обнаружение пробоя ВВЕРХ (цена вышла из диапазона вверх)
+    // 2. Обнаружение пробоя ВВЕРХ (цена вышла из диапазона на нужное расстояние)
     // Пробой регистрируется только если:
-    // - цена была в диапазоне и вышла вверх
+    // - цена была в диапазоне и вышла вверх на нужное расстояние
     // - торговля вверх разрешена (canTradeUp = true)
-    if(!upBreakoutDetected && exitedRangeUp && canTradeUp)
+    if(!upBreakoutDetected && isActualBreakoutUp && wasPriceInRange && canTradeUp)
     {
         // Фиксируем момент первого выхода вверх
         upBreakoutDetected = true;
@@ -345,19 +378,112 @@ void ProcessSignalSearch()
         
         Print("CRITICAL: UP breakout DETECTED at price ", currentPrice, " at time ", TimeToString(currentTime));
         Print("CRITICAL: Range high: ", rangeHigh, ", Breakout threshold: ", (rangeHigh + breakoutDistance));
-        Print("CRITICAL: Previous state - In range: ", wasPriceInRange ? "YES" : "NO", 
-              ", Above range: ", wasPriceAboveRange ? "YES" : "NO", 
-              ", Below range: ", wasPriceBelowRange ? "YES" : "NO");
         Print("CRITICAL: Trading permission - Up breakout ALLOWED");
         
         // Блокируем дальнейшую торговлю вверх в течение этого дня
         canTradeUp = false;
         Print("CRITICAL: Trading permission - Up breakout BLOCKED for the rest of the day");
     }
-    else if(!canTradeUp && exitedRangeUp)
+    else if(!canTradeUp && isActualBreakoutUp && wasPriceInRange)
     {
         Print("CRITICAL: UP breakout DETECTED but IGNORED - trading permission BLOCKED");
-        Print("CRITICAL: Price exited range up but we started above range, so no trade allowed");
+        Print("CRITICAL: Price broke range up but we started above range or already had up breakout");
+    }
+    
+    // 3. Возврат после пробоя ВНИЗ → сигнал BUY
+    if(downBreakoutDetected)
+    {
+        if(config.DebugMode())
+            Print("DEBUG: Checking DOWN breakout return condition - current price: ", currentPrice, 
+                  ", threshold: ", (rangeLow + onePoint));
+                  
+        if(currentPrice >= (rangeLow + onePoint))
+        {
+            // Проверяем корректность времени
+            if(currentTime < downBreakoutTime)
+            {
+                Print("DEBUG: WARNING - Current time (", TimeToString(currentTime), ") is before breakout time (", TimeToString(downBreakoutTime), "). Resetting DOWN breakout flag.");
+                // Сбрасываем флаг пробоя, так как время некорректно
+                downBreakoutDetected = false;
+                downBreakoutPrice = 0.0;
+                downBreakoutTime = 0;
+            }
+            else
+            {
+                // Проверяем, не превышает ли время между пробоем и возвратом максимальное значение
+                int secondsPassed = (int)(currentTime - downBreakoutTime);
+                int hoursPassed = secondsPassed / 3600;
+                
+                if(config.DebugMode())
+                    Print("DEBUG: Return after DOWN breakout → Opening BUY (time elapsed: ", hoursPassed, " hours)");
+                
+                // Только если время в пределах допустимого, открываем позицию
+                if(hoursPassed <= config.MaxBreakoutReturnHours())
+                {
+                    OpenBuyPosition();
+                    ResetBreakoutFlags();
+                    systemState = STATE_POSITION_OPEN;
+                    return; // Важно: выходим после открытия позиции
+                }
+                else
+                {
+                    if(config.DebugMode())
+                        Print("DEBUG: DOWN breakout return ignored - time elapsed (", hoursPassed, " hours) exceeds maximum (", config.MaxBreakoutReturnHours(), " hours)");
+                    // Сбрасываем флаг пробоя, так как время истекло
+                    downBreakoutDetected = false;
+                    downBreakoutPrice = 0.0;
+                    downBreakoutTime = 0;
+                }
+            }
+        }
+    }
+    
+    // 4. Возврат после пробоя ВВЕРХ → сигнал SELL
+    if(upBreakoutDetected)
+    {
+        if(config.DebugMode())
+            Print("DEBUG: Checking UP breakout return condition - current price: ", currentPrice, 
+                  ", threshold: ", (rangeHigh - onePoint));
+                  
+        if(currentPrice <= (rangeHigh - onePoint))
+        {
+            // Проверяем корректность времени
+            if(currentTime < upBreakoutTime)
+            {
+                Print("DEBUG: WARNING - Current time (", TimeToString(currentTime), ") is before breakout time (", TimeToString(upBreakoutTime), "). Resetting UP breakout flag.");
+                // Сбрасываем флаг пробоя, так как время некорректно
+                upBreakoutDetected = false;
+                upBreakoutPrice = 0.0;
+                upBreakoutTime = 0;
+            }
+            else
+            {
+                // Проверяем, не превышает ли время между пробоем и возвратом максимальное значение
+                int secondsPassed = (int)(currentTime - upBreakoutTime);
+                int hoursPassed = secondsPassed / 3600;
+                
+                if(config.DebugMode())
+                    Print("DEBUG: Return after UP breakout → Opening SELL (time elapsed: ", hoursPassed, " hours)");
+                
+                // Только если время в пределах допустимого, открываем позицию
+                if(hoursPassed <= config.MaxBreakoutReturnHours())
+                {
+                    OpenSellPosition();
+                    ResetBreakoutFlags();
+                    systemState = STATE_POSITION_OPEN;
+                    return; // Важно: выходим после открытия позиции
+                }
+                else
+                {
+                    if(config.DebugMode())
+                        Print("DEBUG: UP breakout return ignored - time elapsed (", hoursPassed, " hours) exceeds maximum (", config.MaxBreakoutReturnHours(), " hours)");
+                    // Сбрасываем флаг пробоя, так как время истекло
+                    upBreakoutDetected = false;
+                    upBreakoutPrice = 0.0;
+                    upBreakoutTime = 0;
+                }
+            }
+        }
     }
     
     // 3. Возврат после пробоя ВНИЗ → сигнал BUY
