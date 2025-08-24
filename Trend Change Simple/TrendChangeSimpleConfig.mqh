@@ -23,6 +23,7 @@ private:
     int               m_tradingEndHour;        // Окончание торговли (часы)
     bool              m_debugMode;             // Режим отладки
     bool              m_reverseOnBreakeven;    // Разворачиваться ли при закрытии по безубытку
+    int               m_maxBreakoutReturnHours; // Максимальное время между пробоем и возвратом (часы)
     
 public:
     // Конструктор
@@ -37,7 +38,8 @@ public:
         int tradingStartHour = 0,
         int tradingEndHour = 23,
         bool debugMode = true,
-        bool reverseOnBreakeven = true
+        bool reverseOnBreakeven = true,
+        int maxBreakoutReturnHours = 3
     );
     
     // Методы доступа к параметрам
@@ -52,6 +54,7 @@ public:
     int               TradingEndHour() const { return m_tradingEndHour; }
     bool              DebugMode() const { return m_debugMode; }
     bool              ReverseOnBreakeven() const { return m_reverseOnBreakeven; }
+    int               MaxBreakoutReturnHours() const { return m_maxBreakoutReturnHours; }
 };
 
 //+------------------------------------------------------------------+
@@ -68,7 +71,8 @@ CTrendChangeSimpleConfig::CTrendChangeSimpleConfig(
     int tradingStartHour,
     int tradingEndHour,
     bool debugMode,
-    bool reverseOnBreakeven
+    bool reverseOnBreakeven,
+    int maxBreakoutReturnHours
 )
 {
     m_magicNumber = magicNumber;
@@ -82,5 +86,6 @@ CTrendChangeSimpleConfig::CTrendChangeSimpleConfig(
     m_tradingEndHour = tradingEndHour;
     m_debugMode = debugMode;
     m_reverseOnBreakeven = reverseOnBreakeven;
+    m_maxBreakoutReturnHours = maxBreakoutReturnHours;
 }
 //+------------------------------------------------------------------+

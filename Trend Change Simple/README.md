@@ -10,7 +10,7 @@ Trend Change Simple is a simplified version of the Trend Change trading robot fo
 
 1. **Range Detection**: The robot identifies the price range from the previous day between 16:00 and 00:00 (server time)
 2. **False Breakout Detection**: The robot waits for price to break out of this range by a configurable number of points
-3. **Return Signal**: When price returns back into the range (1 point above the lower boundary for buy signals, or 1 point below the upper boundary for sell signals), the robot opens a position
+3. **Return Signal**: When price returns back into the range (1 point above the lower boundary for buy signals, or 1 point below the upper boundary for sell signals) within a configurable time frame, the robot opens a position
 4. **Stop Loss & Take Profit**: Fixed stop loss and take profit levels based on configuration
 5. **Trailing Stop**: When profit reaches the stop loss distance, the stop loss is moved to breakeven
 6. **Reversal System**: If a trade closes at a loss, the robot can reverse and open the opposite trade (configurable)
@@ -20,12 +20,12 @@ Trend Change Simple is a simplified version of the Trend Change trading robot fo
 
 **For Buy Signals:**
 - Price breaks below the range low by the specified breakout points
-- Price then returns above the range low by 1 point
+- Price then returns above the range low by 1 point within the specified time frame (default: 3 hours)
 - Robot opens a BUY position
 
 **For Sell Signals:**
 - Price breaks above the range high by the specified breakout points  
-- Price then returns below the range high by 1 point
+- Price then returns below the range high by 1 point within the specified time frame (default: 3 hours)
 - Robot opens a SELL position
 
 ### Risk Management
@@ -58,6 +58,7 @@ The robot can be configured through the following input parameters:
 - **`InpBreakoutPoints`** - Points required to detect breakout (default: 10)
 - **`InpStopLossPoints`** - Fixed stop loss in points (default: 20)
 - **`InpTakeProfitMultiplier`** - Take profit multiplier relative to stop loss (default: 2.0)
+- **`InpMaxBreakoutReturnHours`** - Maximum hours between breakout and return (default: 3)
 
 ### Reversal System
 - **`InpMaxReversals`** - Maximum number of reversals (0 = no reversals, default: 3)
