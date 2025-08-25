@@ -14,6 +14,8 @@
 input int InpSmaFilterPeriod = 20;      // Period for the trend-filtering SMA
 input int InpExtremumHours = 1;         // Hours to look back/forward for a significant extremum
 input int InpMaxDistancePoints = 100;  // Max distance from breakout level to open a trade
+input int InpTradingStartTime = 0;     // Trading session start hour (0-23)
+input int InpTradingEndTime = 23;      // Trading session end hour (0-23)
 
 //--- Trading settings
 input double InpLotSize = 0.11;           // Initial Lot Size

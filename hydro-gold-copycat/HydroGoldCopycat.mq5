@@ -78,7 +78,69 @@ void OnTick()
    int signal = CheckSignal();
    int open_trades = CountOpenTrades();
 
-   //--- 1. Handle Exit Logic
+   //--- 1. Handle Forced Exit (if outside trading hours)
+   MqlDateTime current_time;
+   TimeCurrent(current_time);
+   if(current_time.hour < InpTradingStartTime || current_time.hour > InpTradingEndTime)
+     {
+      if(open_trades > 0)
+        {
+         for(int i = PositionsTotal() - 1; i >= 0; i--)
+           {
+            if(PositionGetSymbol(i) == _Symbol && PositionGetInteger(POSITION_MAGIC) == MAGIC_NUMBER)
+              {
+               Print("Outside trading hours. Closing position #", PositionGetTicket(i));
+               trade.PositionClose(PositionGetTicket(i), InpSlippage);
+              }
+           }
+        }
+      return; // Do not proceed with other logic outside trading hours
+     }
+
+   //--- 2. Handle Exit Logic (SMA Crossover)
+   if(open_trades > 0)
+     {
+      // Get M5 close price and SMA value for the last completed bar
+      double m5_close_array[1];
+      double m5_sma_array[1];
+      if(CopyClose(_Symbol, PERIOD_M5, 1, 1, m5_close_array) < 1 ||
+         CopyBuffer(iMA(_Symbol, PERIOD_M5, InpSmaFilterPeriod, 0, MODE_SMA, PRICE_CLOSE), 0, 1, 1, m5_sma_array) < 1)
+        {
+         Print("Error copying M5 data for SMA exit.");
+         return;
+        }
+      double m5_close = m5_close_array[0];
+      double m5_sma = m5_sma_array[0];
+
+      for(int i = PositionsTotal() - 1; i >= 0; i--)
+        {
+         if(PositionGetSymbol(i) == _Symbol && PositionGetInteger(POSITION_MAGIC) == MAGIC_NUMBER)
+           {
+            long type = PositionGetInteger(POSITION_TYPE);
+            bool close_condition_met = false;
+
+            // For Buy positions, close if M5 candle closes below SMA
+            if(type == POSITION_TYPE_BUY && m5_close < m5_sma)
+              {
+               close_condition_met = true;
+              }
+            // For Sell positions, close if M5 candle closes above SMA
+            else if(type == POSITION_TYPE_SELL && m5_close > m5_sma)
+              {
+               close_condition_met = true;
+              }
+
+            if(close_condition_met)
+              {
+               Print("M5 candle closed against SMA. Closing position #", PositionGetTicket(i));
+               trade.PositionClose(PositionGetTicket(i), InpSlippage);
+               return; // Exit after closing to re-evaluate on next tick
+              }
+           }
+        }
+     }
+
+   //--- 3. Handle Exit Logic (Reverse Signal - if enabled)
    if(open_trades > 0 && InpExitOnReverse)
      {
       for(int i = PositionsTotal() - 1; i >= 0; i--)
@@ -96,13 +158,11 @@ void OnTick()
         }
      }
 
-   //--- 2. Handle Entry Logic
+   //--- 4. Handle Entry Logic
    if(signal != 0)
      {
-      //--- Time Filter
-      MqlDateTime current_time;
-      TimeCurrent(current_time);
-      if(current_time.hour < 1)
+      //--- Time Filter for Entry
+      if(current_time.hour < InpTradingStartTime || current_time.hour > InpTradingEndTime)
          return; // Trading is forbidden at this hour
 
       bool can_open_new_trade = false;
